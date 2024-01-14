@@ -125,8 +125,10 @@ void setup() {
   // initialize digital pin led as an output
   pinMode(led1, OUTPUT);
   pinMode(led2, OUTPUT);
-  while(!Serial);
-  Serial.println("Starting...");
+
+//This stop it running on battery
+//  while(!Serial);
+//  Serial.println("Starting...");
 
 
   loadWifiData();
