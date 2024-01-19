@@ -15,6 +15,10 @@
 #include <EEPROM.h> //The EEPROM libray 
 #include "WiFi.h"
 #include <Arduino_JSON.h>
+//#include <ArduinoJson.h>
+#include <HTTPClient.h>
+//#include "EspMQTTClient.h"
+#include <PubSubClient.h>
 
 //EEPROM Details for non-volatile config
 const int EEPROM_SIZE          = 512;
@@ -108,7 +112,7 @@ struct storeStruct_t{
  * Define Global Variables
  */
 // Create an instance of the server
-WiFiServer server(SERVER_PORT);
+//WiFiServer server(SERVER_PORT);
 
 bool g_pin_state = false;
 
@@ -139,8 +143,10 @@ void setup() {
   if(!connectToWiFiNetwork()){
     setupAccessPoint();    
   }
-  server.begin();
-  Serial.println("Server started");
+//  server.begin();
+//  Serial.println("Server started");
+  Serial.println("Client started");
+
 }
 
 
@@ -446,11 +452,7 @@ void getHeader(WiFiClient& aClient, int& aBodySize){
       char* hdr_line_elements[2];
       int hdr_line_len = hdr_line.length();
       char hdr_char_buf[hdr_line_len+1];
-      //memset(hdr_char_buf, '\0', hdr_line_len+1);
-//      Serial.print("hdr_char_buf:");
-//      Serial.print(hdr_char_buf);
 
-//      hdr_line.toCharArray(hdr_char_buf, hdr_line_len+1) //TODO check this
       hdr_line.toCharArray(hdr_char_buf, hdr_line_len+1);
       
       split(hdr_char_buf, ":", hdr_line_elements, 1);
@@ -462,17 +464,11 @@ void getHeader(WiFiClient& aClient, int& aBodySize){
       }        
 
       if (hdr_line=="\r"){
-//         ++newline;
-//         Serial.println("newline found");
-//         if(2==newline){
            Serial.println("END OF HEADER");
 //         Serial.println(hdr_line);      
            header_found = true;
-//         }
        }    
    }
-
-//   free(hdr_char_buf);
 }
 
 /**
@@ -906,58 +902,285 @@ void handleSetWifiSettings(WiFiClient& aClient){
  * This is the main loop. This runs once the setup is complete
  * 
  ***********************************************************************/
+//void loop() {
+////  Serial.print("\nLoopy");
+//  
+// // Check if a client has connected
+//  WiFiClient client = server.available();
+//
+//  if (!client) {
+//    delay(1);
+//    return;
+//  }
+//  client.setTimeout(WIFI_CLIENT_READ_TIMEOUT_MS);
+//  
+//  Serial.print("\nNew client connected from ");
+//  Serial.println(client.remoteIP());
+//  
+//  while(!client.available()){
+//    delay(1);
+//  }
+//  
+//  // Read the first line of the request
+//  String req = client.readStringUntil('\r');
+//  Serial.print("REQUEST:");
+//  Serial.println(req);
+//
+//  int req_len = req.length();
+//  char req_char_buf[req_len+1];
+//
+//  req.toCharArray(req_char_buf, req_len+1);
+//  int num_seps = getNumOccurrances(req_char_buf, HTTP_LINE_SEPARATOR);
+//
+//  if (2 <= num_seps){
+//    char* components[num_seps+1];  
+//    split(req_char_buf, HTTP_LINE_SEPARATOR, components, num_seps);
+//  
+//    char* command = components[0];
+//    char* end_point = components[1];
+//    
+//    if(0==strcmp(REST_GET, command)){
+//      handleGet(client, end_point);
+//    } else if (0==strcmp(REST_PUT, command)){
+//      handlePut(client, end_point);
+//    } else if (0==strcmp(REST_POST, command)){
+//      handlePost(client, end_point);
+//    } else {
+//      handleUnsupported(client, command);    
+//    }
+//  }
+//
+//  client.flush();
+//  delay(1);
+//  Serial.println("Client disconnected");
+//
+//  // The client will actually be disconnected 
+//  // when the function returns and 'client' object is detroyed
+//}
+
+
+
+
+/*****************************************************************
+ * 
+ * This is the main loop. This runs once the setup is complete
+ * 
+ */
 void loop() {
-//  Serial.print("\nLoopy");
-  
- // Check if a client has connected
-  WiFiClient client = server.available();
-
-  if (!client) {
-    delay(1);
-    return;
-  }
-  client.setTimeout(WIFI_CLIENT_READ_TIMEOUT_MS);
-  
-  Serial.print("\nNew client connected from ");
-  Serial.println(client.remoteIP());
-  
-  while(!client.available()){
-    delay(1);
-  }
-  
-  // Read the first line of the request
-  String req = client.readStringUntil('\r');
-  Serial.print("REQUEST:");
-  Serial.println(req);
-
-  int req_len = req.length();
-  char req_char_buf[req_len+1];
-
-  req.toCharArray(req_char_buf, req_len+1);
-  int num_seps = getNumOccurrances(req_char_buf, HTTP_LINE_SEPARATOR);
-
-  if (2 <= num_seps){
-    char* components[num_seps+1];  
-    split(req_char_buf, HTTP_LINE_SEPARATOR, components, num_seps);
-  
-    char* command = components[0];
-    char* end_point = components[1];
-    
-    if(0==strcmp(REST_GET, command)){
-      handleGet(client, end_point);
-    } else if (0==strcmp(REST_PUT, command)){
-      handlePut(client, end_point);
-    } else if (0==strcmp(REST_POST, command)){
-      handlePost(client, end_point);
-    } else {
-      handleUnsupported(client, command);    
-    }
-  }
-
-  client.flush();
-  delay(1);
-  Serial.println("Client disconnected");
-
-  // The client will actually be disconnected 
-  // when the function returns and 'client' object is detroyed
+  doWork();
 }
+
+void doWork() {
+
+   Serial.printf("Creating Client");
+
+/******************************************** MQTT ******************************************************/
+   const char* mqtt_server = "192.168.0.124";
+   const uint16_t mqtt_server_port = 1883; 
+   const char* mqtt_user = "alex";
+   const char* mqtt_password = "Pl@5m0d!um";
+   const char *topic = "esp8266/db5";
+
+
+/***********************************************************************************************************/
+
+   WiFiClient wifi_client;  // or WiFiClientSecure for HTTPS
+   HTTPClient http;
+
+
+   
+
+/*******************************************************************************************************/
+
+   // Send request
+   const char *server_url = "http://192.168.0.124:3000/db5/light/status";
+
+//   http.useHTTP10(true);
+   Serial.printf("Sending request to %s\n", server_url);
+   http.begin(wifi_client, server_url);
+//   http.begin(wifi_client, "http://192.168.0.124:3000/db5/light/status");
+   Serial.print("Calling GET:");
+   int resp_code = http.GET();
+   Serial.println(resp_code);
+
+   if(resp_code > 0) {
+      // Print the response
+
+      String http_response = http.getString();
+      Serial.print("Response:");
+      Serial.println(http_response);
+
+      
+      
+//      Serial.print("Response[0]:");
+//      Serial.println(http_response[0]);
+
+      if (http_response.length() > 3) { // remove UTF8 BOM
+         if (http_response[0] == char(0xEF) && http_response[1] == char(0xBB) && http_response[2] == char(0xBF)) {
+            Serial.println("remove BOM from JSON");
+            http_response = http_response.substring(3);
+         }
+      }
+      
+
+      JSONVar resp_json = JSON.parse(http_response);
+      Serial.println(JSON.stringify(http_response).c_str());
+
+      Serial.print("Lights Status:");
+      Serial.println(resp_json["lights"]);
+      Serial.print("Reset Status:");
+      Serial.println(resp_json["reset"]);
+
+      Serial.print("JSON.typeof:");
+      Serial.println(JSON.typeof(resp_json));
+
+
+      if (JSON.typeof(resp_json) == "undefined") {
+         Serial.println("Parsing input failed!");
+      } else {
+//      if(deserialisation_error.code() == DeserializationError::Ok){
+
+//         const char* state = resp_json["lights"];
+//
+//         Serial.print("JSON:");
+//         Serial.println(state);
+      
+         if(0 == strcmp(resp_json["lights"], "on")){
+            Serial.println("Server says lights are on");
+            setLights(true); 
+         } else if (0 == strcmp(resp_json["lights"], "off")){
+            Serial.println("Server says lights are off");
+            setLights(false); 
+         }
+      }
+
+
+
+
+//      DynamicJsonDocument json(1024);
+////      deserializeJson(json, http_response);
+////      DeserializationError deserialisation_error = deserializeJson(json, http.getStream());
+//      DeserializationError deserialisation_error = deserializeJson(json, http_response);
+//      //JsonObject& root = jsonBuffer.parseObject(http.getString());
+//
+//      Serial.print("DeserializationError::Ok:");
+//      Serial.println(DeserializationError::Ok);
+//      Serial.print("DeserializationError::InvalidInput:");
+//      Serial.println(DeserializationError::InvalidInput);
+//      Serial.print("DeserializationError::NoMemory:");
+//      Serial.println(DeserializationError::NoMemory);
+//      Serial.print("DeserializationError::EmptyInput:");
+//      Serial.println(DeserializationError::EmptyInput);
+//      Serial.print("DeserializationError::IncompleteInput:");
+//      Serial.println(DeserializationError::IncompleteInput);
+//      Serial.print("DeserializationError::TooDeep:");
+//      Serial.println(DeserializationError::TooDeep);
+//      
+//      Serial.print("deserialisation_error:");
+//      Serial.println(deserialisation_error.code());
+
+//      if(deserialisation_error.code() == DeserializationError::Ok){
+//
+//         const char* state = json["lights"];
+//
+//         Serial.print("JSON:");
+//         Serial.println(state);
+//      
+//         if(0 == strcmp(json["lights"], "on")){
+//            Serial.println("Server says lights are on");
+//            setLights(true); 
+//         } else if (0 == strcmp(json["lights"], "off")){
+//            Serial.println("Server says lights are off");
+//            setLights(false); 
+//         }
+//      }
+    
+   }else {
+      Serial.println("Error Connecting");    
+   }
+
+//   EspMQTTClient mqtt_client(
+//    "Anfield",
+//    "1985Dalglish1991",
+//    "192.168.0.124",
+//    "alex",
+//    "Pl@5m0d!um",
+//    "esp32c3");
+
+//    mqtt_clietn
+
+
+
+   PubSubClient mqtt_client(wifi_client);
+   mqtt_client.setServer(mqtt_server, mqtt_server_port);
+
+   while (!mqtt_client.connected()) {
+      String client_id = "esp32c3-client-";
+      client_id += String(WiFi.macAddress());
+      Serial.printf("The client %s connects to the public mqtt broker\n", client_id.c_str());
+      if (mqtt_client.connect(client_id.c_str(), mqtt_user, mqtt_password)) {
+      } else {
+         Serial.print("failed with state ");
+         Serial.print(mqtt_client.state());
+//         delay(2000);
+      }
+   }
+
+   JSONVar json_packet;
+
+   if(g_pin_state){
+      json_packet["lights"] = "on";
+   } else {
+      json_packet["lights"] = "off";
+   }
+
+
+//   StaticJsonDocument<200> json_packet;
+//   json_packet["lights"] = 
+
+   Serial.println(JSON.stringify(json_packet).c_str());
+   
+   mqtt_client.publish(topic, JSON.stringify(json_packet).c_str());
+
+   http.end();
+
+   int sleep_len_ms = 10000;
+   delay(sleep_len_ms);
+
+
+
+////   int loop_delay = 60000;
+////   int loop_delay_ms = 60000;
+//   int loop_delay_ms = 10000;
+//   int led_duration_ms = 500;
+//   digitalWrite(BUILTIN_LED_PIN, 0);
+//   delay(led_duration_ms);
+//   digitalWrite(BUILTIN_LED_PIN, 1);
+//
+////   Serial.print("Sleeping for ");
+////   Serial.print((loop_delay - led_duration));
+////   Serial.println("ms");
+////   delay(loop_delay - led_duration);
+//
+//
+//   gpio_hold_en((gpio_num_t)BUILTIN_RX_PIN);
+//
+//
+////   long sp_duration = 10e6;
+//   long sp_duration_us = loop_delay_ms * 1000;
+//   Serial.print("Deep Sleep for ");
+//   Serial.print((sp_duration_us - (led_duration_ms * 1000)));
+//   Serial.println("us");
+//   ESP.deepSleep((sp_duration_us - (led_duration_ms * 1000))); // 20e6 is 20 microseconds
+
+}
+
+
+//void onConnectionEstablished() {
+//
+////  client.subscribe("mytopic/test", [] (const String &payload)  {
+////    Serial.println(payload);
+////  });
+////
+////  client.publish("mytopic/test", "This is a message");
+//}
