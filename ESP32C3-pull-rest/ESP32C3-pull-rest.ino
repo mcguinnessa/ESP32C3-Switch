@@ -2,44 +2,52 @@
  * Alex McGuinness 
  * 08/01/2024
  * 
- * This sketch will set a PIN high or low depending on communication via a REST/HTTP interface
- * PUT /lights/on          - Sets the pin high and turns on the lights
- * PUT /lights/off         - Sets the pin low and turns off the lights
- * GET /lights/status      - gets the current state of the lights
- * GET /admin/vcc          - gets the VCC voltage
+ * This sketch will interrogate a server using the given URL for the status of the light and the time to sleep.
+ * It will then set the light state and sleep for the given time.
  * 
- * The WiFi configuration can be set with new SSID/Password 
- * POST /admin/wifi
+ * It will also send an MQTT message including the light state and the battery voltage.
+ *  
+ * On first use the ESP will fail to connect to the wifi and go into server mode, where it will present a 
+ * configuration page on where the wifi, server and mqtt parameters can be set.
+ *  
+ * A reset command can be sent to the server which will force the ESP into factory reset mode when it next checks
  */
 
 #include <EEPROM.h> //The EEPROM libray 
 #include "WiFi.h"
 #include <Arduino_JSON.h>
-//#include <ArduinoJson.h>
 #include <HTTPClient.h>
-//#include "EspMQTTClient.h"
 #include <PubSubClient.h>
+#include "arduino_percent.hpp"
+
+/*****************************************************************************
+* If due to corruption or development, the reset can't be send via the server.
+* This will force a reset if set to true.
+* 
+* Once sent to chip, unset and resend
+******************************************************************************/
+bool FORCE_RESET = false;
+/*****************************************************************************/
 
 //EEPROM Details for non-volatile config
 const int EEPROM_SIZE              = 512;
 const int WIFI_DATA_START_ADDR     = 0;
-const int PIN_DATA_START_ADDR      = 150;
+const int PIN_DATA_START_ADDR      = 300;
 const int MAX_WIFI_SSID_LENGTH     = 32;
 const int MAX_WIFI_PASSWORD_LENGTH = 63;
-//const int PORT_STR_LENGTH          = 7;
 const int IP_ADDR_LENGTH           = 17;
+const int SERVER_END_POINT_LENGTH  = 32;
 const int MAX_MQTT_USER_LENGTH     = 12; 
 const int MAX_MQTT_PASSWORD_LENGTH = 32;
 const int MAX_MQTT_TOPIC_LENGTH    = 32;
 
-
-
 const int WIFI_CLIENT_READ_TIMEOUT_MS = 5000;
+const int SERVER_READ_TIMEOUT_MS = 500; 
 
 const int AP_SERVER_PORT = 80;
 const int CONNECT_TIMEOUT_MS  = 30000;  //How long it should take to connect
 const int CONNECT_INTERVAL_MS = 500;    //How long it should wait inbetween attempts
-//
+
 ////REST API Defs
 const char* const REST_PUT          ="PUT";
 const char* const REST_POST         ="POST";
@@ -56,12 +64,12 @@ const char* const WIFI_PASSWORD     ="wifi-password";
 
 const char* const SERVER_IP         = "server-ip"; 
 const char* const SERVER_PORT       = "server-port"; 
+const char* const SERVER_END_POINT  = "server-end-point"; 
 const char* const MQTT_IP           = "mqtt-ip";
 const char* const MQTT_PORT         = "mqtt-port"; 
 const char* const MQTT_USER         = "mqtt-user";
 const char* const MQTT_PASSWORD     = "mqtt-password"; 
 const char* const MQTT_TOPIC        = "mqtt-topic";
-
 
 //JSON Defs
 const char* const LIGHTS_STATUS_UNKNOWN = "unknown";
@@ -69,9 +77,10 @@ const char* const LIGHTS_STATUS_ON = "on";
 const char* const LIGHTS_STATUS_OFF = "off";
 const char* const JSON_LIGHTS_TAG = "lights";
 const char* const JSON_RESET_TAG = "reset";
+const char* const JSON_TTS_TAG = "tts";
 const char* const RESET_STATUS_TRUE = "true";
 const char* const JSON_VCC_TAG = "vcc";
-const char* const JSON_WIFI_RESET_TAG = "wifi-reset";
+const char* const JSON_CONFIG_RESET_TAG = "esp32-reset";
 const char* const JSON_ERROR_TAG = "error";
 const char* const POST_RESP_FAILURE = "Failure";
 const char* const POST_RESP_SUCCESS = "Success";
@@ -79,6 +88,7 @@ const char* const POST_RESP_SUCCESS = "Success";
 //HTTP
 const int WIFI_WEB_PAGE_SIZE = 2560;
 const int JSON_RESPONSE_SIZE = 384;
+const int MAX_SERVER_URL_LEN = 48;
 const char* const HTTP_VERSION = "HTTP/1.1";
 const char* const HTTP_CODE = "200 OK";
 const char* const HTTP_HDR_CONTENT_TYPE_TAG = "Content-Type";
@@ -89,18 +99,19 @@ const char* const END_POINT_SEPARATOR      = "/";
 const char* const HTTP_LINE_SEPARATOR      = " ";
 const char* const POST_PARAM_SEPARATOR     = "&";
 const char* const POST_KEY_VALUE_SEPARATOR = "=";
-const char* const JSON_ERROR_BAD_SSID_LEN = "Invalid SSID Length";
-const char* const JSON_ERROR_BAD_PWD_LEN = "Invalid password Length";
-const char* const JSON_ERROR_BAD_SERVER_IP_LEN = "Invalid Server IP length";
-const char* const JSON_ERROR_BAD_SERVER_PORT_LEN = "Invalid Server Port Length";
-const char* const JSON_ERROR_BAD_MQTT_IP_LEN = "Invalid MQTT IP length";
-const char* const JSON_ERROR_BAD_MQTT_PORT_LEN = "Invalid MQTT Port Length";
-const char* const JSON_ERROR_BAD_MQTT_USER_LEN = "Invalid MQTT User Length";
-const char* const JSON_ERROR_BAD_MQTT_PASSWORD_LEN = "Invalid MQTT Password Length";
-const char* const JSON_ERROR_BAD_MQTT_TOPIC_LEN = "Invalid MQTT Port Length";
+const char* const JSON_ERROR_BAD_SSID_LEN             = "Invalid SSID Length";
+const char* const JSON_ERROR_BAD_PWD_LEN              = "Invalid password Length";
+const char* const JSON_ERROR_BAD_SERVER_IP_LEN        = "Invalid Server IP length";
+const char* const JSON_ERROR_BAD_SERVER_PORT_LEN      = "Invalid Server Port length";
+const char* const JSON_ERROR_BAD_SERVER_END_POINT_LEN = "Invalid Server End Point length";
+const char* const JSON_ERROR_BAD_MQTT_IP_LEN          = "Invalid MQTT IP length";
+const char* const JSON_ERROR_BAD_MQTT_PORT_LEN        = "Invalid MQTT Port length";
+const char* const JSON_ERROR_BAD_MQTT_USER_LEN        = "Invalid MQTT User length";
+const char* const JSON_ERROR_BAD_MQTT_PASSWORD_LEN    = "Invalid MQTT Password length";
+const char* const JSON_ERROR_BAD_MQTT_TOPIC_LEN       = "Invalid MQTT Port length";
 
 
-const char* const SET_WIFI_URL = "/admin/wifi";
+const char* const SET_WIFI_URL = "/admin/settings";
 const char* const SET_CONFIG_COMMAND = "/settings";
 
 //const byte BUILTIN_LED_PIN=2;
@@ -110,17 +121,19 @@ const char* const SET_CONFIG_COMMAND = "/settings";
 /**
  * Set default values for factory reset
  */
-const char* const FR_WIFI_SSID     = "wifi-ssid";
-const char* const FR_WIFI_PASS     = "wifipassword";
-const char* const FR_SERVER_IP     = "0.0.0.0";
-const unsigned int FR_SERVER_PORT   = (short)0;
-const char* const FR_MQTT_IP       = "0.0.0.0";
-const unsigned int FR_MQTT_PORT     = (short)0;
-const char* const FR_MQTT_USER     = "mqtt";
-const char* const FR_MQTT_PASSWORD = "mqttpass";
-const char* const FR_MQTT_TOPIC    = "/mqtt/topic";
+const char* const FR_WIFI_SSID        = "wifi-ssid";
+const char* const FR_WIFI_PASS        = "wifipassword";
+const char* const FR_SERVER_IP        = "0.0.0.0";
+const unsigned int FR_SERVER_PORT     = (short)0;
+const char* const FR_SERVER_END_POINT = "server-end-point";
+const char* const FR_MQTT_IP          = "0.0.0.0";
+const unsigned int FR_MQTT_PORT       = (short)0;
+const char* const FR_MQTT_USER        = "mqtt";
+const char* const FR_MQTT_PASSWORD    = "mqttpass";
+const char* const FR_MQTT_TOPIC       = "/mqtt/topic";
 
-
+const uint16_t MQTT_CONNECT_TIMEOUT_S = 5;
+const uint16_t MQTT_CONNECT_DELAY_MS = 100;
  
 /**
  * Define AP WIFI Details
@@ -136,11 +149,17 @@ const IPAddress AP_SUBNET(255,255,255,0);
 const short SERVER_MODE = 1;
 const short CLIENT_MODE = 2;
  
-// define led according to pin diagram
+// define PINs according to pin diagram
 int ON_PIN = D10;
 int OFF_PIN = D1;
-
 int VCC_PIN = A0;
+
+//These are for the wait for serial
+const int TIME_TO_WAIT_FOR_SERIAL_MS = 2000;
+const int DELAY_WAIT_FOR_SERIAL_MS = 100;
+
+//Sleep period
+const int DEFAULT_SLEEP_PERIOD_MS = 60 * 1000;
 
 
 //Definition of structure to be stored in memory
@@ -150,6 +169,7 @@ struct storeStruct_t{
   char wifiPassword[MAX_WIFI_PASSWORD_LENGTH];
   char serverIPAddress[IP_ADDR_LENGTH];
   uint16_t serverPort;
+  char serverEndPoint[SERVER_END_POINT_LENGTH];
   char mqttIPAddress[IP_ADDR_LENGTH];
   uint16_t mqttPort;
   char mqttUser[MAX_MQTT_USER_LENGTH];
@@ -170,6 +190,7 @@ storeStruct_t g_settings = {
   *FR_WIFI_PASS,
   *FR_SERVER_IP,
   FR_SERVER_PORT,
+  *FR_SERVER_END_POINT,
   *FR_MQTT_IP,
   FR_MQTT_PORT,
   *FR_MQTT_USER,
@@ -178,7 +199,9 @@ storeStruct_t g_settings = {
 };
 
 
-
+/**
+ * Normal set up method
+ */
 void setup() {
   Serial.begin(115200);
   // initialize digital pin led as an output
@@ -187,30 +210,33 @@ void setup() {
 
   pinMode(VCC_PIN, INPUT);  
 
-//This stop it running on battery
-//  while(!Serial);
-//  Serial.println("Starting...");
 
+  //If I wait forever, it will never start on battery, but I want intial messages on startup when debugging
+  //So this waits for a small time for serial to start, then gives up
+  int serial_attempts = TIME_TO_WAIT_FOR_SERIAL_MS / DELAY_WAIT_FOR_SERIAL_MS;
+  while((!Serial) && (0 < serial_attempts)){
+    delay(DELAY_WAIT_FOR_SERIAL_MS);
+    --serial_attempts;
+  }
+  Serial.println("Serial Started...");
 
   loadSettingsData();
   loadPinState();  
-  //setLights(g_pin_state);
 
   //Connect to configured network
   if(!connectToWiFiNetwork()){
     setupAccessPoint();    
     server.begin();
     g_mode = SERVER_MODE;
-    Serial.println("Server started");
+    Serial.println("Started in Server Mode");
   } else {
-    Serial.println("Client started");    
+    Serial.println("Started in Client Mode");    
     g_mode = CLIENT_MODE;
   }
 }
 
-
 /**
- * Sets the PIN to be the state
+ * Sets the PIN based on the state
  */
 void setLights(bool aState){
    g_pin_state = aState;
@@ -224,38 +250,18 @@ void setLights(bool aState){
    }
      
   Serial.print("PIN:");
-  Serial.print(ON_PIN);
+  Serial.print(ON_PIN, HEX);
   Serial.print(":");
   Serial.println(p1state);
   Serial.print("PIN:");
-  Serial.print(OFF_PIN);
+  Serial.print(OFF_PIN, HEX);
   Serial.print(":");
   Serial.println(p2state);
 
   digitalWrite(ON_PIN, p1state);
   digitalWrite(OFF_PIN, p2state);
-//  digitalWrite(BUILTIN_TX_PIN, val);
-//  digitalWrite(BUILTIN_RX_PIN, val);
 
-   savePinState();  
-
-
-//  Serial.println("LED on D10 on");
-//  digitalWrite(led1, HIGH);   // turn the LED on   
-//  delay(5000);               // wait for a second
-//  Serial.println("LED on D10 off");
-//  digitalWrite(led1, LOW);    // turn the LED off
-//  
-//  delay(1000);               // wait for a second
-//
-//  Serial.println("LED on D1 on");
-//  digitalWrite(led2, HIGH);   // turn the LED on   
-//  delay(5000);               // wait for a second
-//  Serial.println("LED on D1 off");
-//  digitalWrite(led2, LOW);    // turn the LED off
-//  delay(1000);               // wait for a second
-
-   
+   savePinState();     
 }
 
 
@@ -315,9 +321,9 @@ int connectToWiFiNetwork(){
 
   if(WiFi.status() == WL_CONNECTED) {
      Serial.print("\nWiFi connected with IP ");
-     Serial.println(WiFi.localIP());    
-  
+     Serial.println(WiFi.localIP());      
      rc = true;
+     
   } else {
      Serial.print("\nUnable to connect to ");
      Serial.print(g_settings.ssid);
@@ -329,10 +335,8 @@ int connectToWiFiNetwork(){
   return rc;
 }
 
-
-
 /**
- * Sets up the wireless access point, so the ESP8266 can be accessed with no wifi details
+ * Sets up the wireless access point, so the ESP can be accessed with no wifi details
  */
 void setupAccessPoint(){
 
@@ -355,14 +359,10 @@ void setupAccessPoint(){
   uint8_t macAddr[6];
   WiFi.softAPmacAddress(macAddr);
   Serial.printf("ESP32C3 MAC address = %02x:%02x:%02x:%02x:%02x:%02x\n", macAddr[0], macAddr[1], macAddr[2], macAddr[3], macAddr[4], macAddr[5]);
-
-//  Serial.print("Local IP:");
-//  Serial.println(WiFi.localIP());   
-//  Serial.print("\n");
 }
 
 /**
- * Sets up the wireless access point, so the ESP8266 can be accessed with no wifi details
+ * Destroys the access point
  */
 void removeAccessPoint(){
 
@@ -376,13 +376,14 @@ void removeAccessPoint(){
  */
 void loadSettingsData(){
 
+  Serial.println("-----------------------");
   Serial.println("WiFi Config from EEPROM");
+  Serial.println("-----------------------");
   storeStruct_t load;
   EEPROM.begin(EEPROM_SIZE);
   EEPROM.get( WIFI_DATA_START_ADDR, load);
   EEPROM.end();
 
-  Serial.println("-----------------------");
   Serial.print("SSID:");
   Serial.println(load.ssid);
   Serial.print("Password:");
@@ -391,6 +392,8 @@ void loadSettingsData(){
   Serial.println(load.serverIPAddress);
   Serial.print("ServerPort:");
   Serial.println((uint16_t)load.serverPort);
+  Serial.print("Server End Point:");
+  Serial.println(load.serverEndPoint);
   Serial.print("MQTT IP:");
   Serial.println(load.mqttIPAddress);
   Serial.print("MQTT Port:");
@@ -415,7 +418,9 @@ void loadSettingsData(){
  */
 void saveSettingsData() {
   
+  Serial.println("-----------------------");
   Serial.println("Saving WiFi Config to EEPROM.");
+  Serial.println("-----------------------");
   Serial.print("   G_SETTINGS_SSID:");
   Serial.println(g_settings.ssid);
   Serial.print("   G_SETTINGS_PASSWORD:");
@@ -423,17 +428,23 @@ void saveSettingsData() {
   Serial.print("   G_SETTINGS_SERVER_IP:");
   Serial.println(g_settings.serverIPAddress);
   Serial.print("   G_SETTINGS_SERVER_PORT:");
-  Serial.println((unsigned short)g_settings.serverPort);
+  Serial.println((uint16_t)g_settings.serverPort);
+  Serial.print("   G_SETTINGS_SERVER_END_POINT:");
+  Serial.println(g_settings.serverEndPoint);
   Serial.print("   G_SETTINGS_MQTT_IP:");
   Serial.println(g_settings.mqttIPAddress);
   Serial.print("   G_SETTINGS_MQTT_PORT:");
-  Serial.println((unsigned short)g_settings.mqttPort);
+  Serial.println((uint16_t)g_settings.mqttPort);
   Serial.print("   G_SETTINGS_MQTT_USER:");
   Serial.println(g_settings.mqttUser);
   Serial.print("   G_SETTINGS_MQTT_PASSWORD:");
   Serial.println(g_settings.mqttPassword);
   Serial.print("   G_SETTINGS_TOPIC_NAME:");
   Serial.println(g_settings.mqttTopic);
+  Serial.println("-----------------------");
+  Serial.print("size:");
+  Serial.println(sizeof(g_settings));
+  Serial.println("-----------------------");
 
 
   EEPROM.begin(EEPROM_SIZE);
@@ -453,6 +464,8 @@ void savePinState() {
   EEPROM.put (PIN_DATA_START_ADDR, g_pin_state);
   EEPROM.commit();
   EEPROM.end();
+  Serial.print("size:");
+  Serial.println(sizeof(g_pin_state));
 }
 
 /**
@@ -465,16 +478,14 @@ void loadPinState() {
   EEPROM.get( PIN_DATA_START_ADDR, g_pin_state);
   EEPROM.end();
   Serial.println(g_pin_state);  
+  Serial.print("size:");
+  Serial.println(sizeof(g_pin_state));
 }
 
 /**
  * Splits a string into an array
  */
 void split(char* aString, const char *aSeparator, char *aArray[], const int aMax){
-
-//  for(int j=0; j<sizeof(aArray); j++){
-//    aArray[j] = *aString[sizeof(aString)-1];    
-//  }
 
   int i=0;
   char* token = strtok(aString, aSeparator);
@@ -516,26 +527,16 @@ void getHeader(WiFiClient& aClient, int& aBodySize){
    bool header_found = false;
    int newline = 0;
 
-//   int num_lines = 0;
-//   int max_header_line = 20;
-
-//   char *hdr_char_buf = (char*)malloc(45);
-
-//   while(!header_found && num_lines < max_header_line){
    while(!header_found){
       //HTTP protocol ends each line wi CRLF
-//      String hdr_line = aClient.readStringUntil('\r');
       String hdr_line = aClient.readStringUntil('\n');
-
-//      Serial.println(hdr_line.length());
       Serial.print("HEADER LINE[");
       Serial.print(hdr_line.length());
       Serial.print("]:");
       Serial.println(hdr_line);
 
-      Serial.print("[0]:0x");
-      Serial.println(hdr_line[0], HEX);
-
+//      Serial.print("[0]:0x");
+//      Serial.println(hdr_line[0], HEX);
 
       char* hdr_line_elements[2];
       int hdr_line_len = hdr_line.length();
@@ -552,8 +553,7 @@ void getHeader(WiFiClient& aClient, int& aBodySize){
       }        
 
       if (hdr_line=="\r"){
-           Serial.println("END OF HEADER");
-//         Serial.println(hdr_line);      
+//           Serial.println("END OF HEADER");
            header_found = true;
        }    
    }
@@ -568,78 +568,78 @@ void handleUnsupported(WiFiClient& aClient, char* command){
 }
 
 
-/**
- * Handles lights status request
- */
-void handleLightsView(WiFiClient& aClient, char** aCommandArray){
-  Serial.print("handleLightsView:");  
-  Serial.println(aCommandArray[1]);  
-  Serial.print(" len:");  
-  Serial.println(strlen(aCommandArray[1]));  
+///**
+// * Handles lights status request
+// */
+//void handleLightsView(WiFiClient& aClient, char** aCommandArray){
+//  Serial.print("handleLightsView:");  
+//  Serial.println(aCommandArray[1]);  
+//  Serial.print(" len:");  
+//  Serial.println(strlen(aCommandArray[1]));  
+//
+//  int val = 0;
+//  JSONVar json;
+//  const char * status = LIGHTS_STATUS_UNKNOWN;
+//  if (0==strcmp(LIGHTS_STATUS, aCommandArray[1])){
+//     status = LIGHTS_STATUS_OFF;
+//     if (g_pin_state == true){
+//        status = LIGHTS_STATUS_ON;
+//     } 
+//  } else {
+//    handleUnsupported(aClient, aCommandArray[1]);    
+//  }
+//  json[JSON_LIGHTS_TAG] = status;
+//
+//  // Prepare the response
+//  char response[JSON_RESPONSE_SIZE];
+//  sprintf(response, "%s %s\r\n" 
+//         "%s: %s\r\n\r\n"  
+//         "%s\r\n", HTTP_VERSION, HTTP_CODE, HTTP_HDR_CONTENT_TYPE_TAG, HTTP_HDR_CONTENT_TYPE_JSON,
+//         JSON.stringify(json).c_str());
+//
+//  
+//  Serial.print("RESPONSE:");  
+//  Serial.println(response);  
+//
+//  // Send the response to the client
+//  aClient.flush();
+//  aClient.print(response);
+//}
 
-  int val = 0;
-  JSONVar json;
-  const char * status = LIGHTS_STATUS_UNKNOWN;
-  if (0==strcmp(LIGHTS_STATUS, aCommandArray[1])){
-     status = LIGHTS_STATUS_OFF;
-     if (g_pin_state == true){
-        status = LIGHTS_STATUS_ON;
-     } 
-  } else {
-    handleUnsupported(aClient, aCommandArray[1]);    
-  }
-  json[JSON_LIGHTS_TAG] = status;
-
-  // Prepare the response
-  char response[JSON_RESPONSE_SIZE];
-  sprintf(response, "%s %s\r\n" 
-         "%s: %s\r\n\r\n"  
-         "%s\r\n", HTTP_VERSION, HTTP_CODE, HTTP_HDR_CONTENT_TYPE_TAG, HTTP_HDR_CONTENT_TYPE_JSON,
-         JSON.stringify(json).c_str());
-
-  
-  Serial.print("RESPONSE:");  
-  Serial.println(response);  
-
-  // Send the response to the client
-  aClient.flush();
-  aClient.print(response);
-}
-
-/**
- * Handles VCC request
- */
-void handleVccView(WiFiClient& aClient){
-  Serial.print("handleVccView - VCC:");  
-
-  JSONVar json;
-  float vcc = 0;
-//  vcc = ESP.getVcc()/1000.00;
-  Serial.println(vcc);
-
-  json[JSON_VCC_TAG] = vcc;
-
-  // Prepare the response
-  char response[JSON_RESPONSE_SIZE];
-  sprintf(response, "%s %s\r\n" 
-         "%s: %s\r\n\r\n"  
-         "%s\r\n", HTTP_VERSION, HTTP_CODE, HTTP_HDR_CONTENT_TYPE_TAG, HTTP_HDR_CONTENT_TYPE_JSON,
-         JSON.stringify(json).c_str());
-
-  Serial.print("RESPONSE:");  
-  Serial.println(response);  
-
-  // Send the response to the client
-  aClient.flush();
-  aClient.print(response);
-}
+///**
+// * Handles VCC request
+// */
+//void handleVccView(WiFiClient& aClient){
+//  Serial.print("handleVccView - VCC:");  
+//
+//  JSONVar json;
+//  float vcc = 0;
+////  vcc = ESP.getVcc()/1000.00;
+//  Serial.println(vcc);
+//
+//  json[JSON_VCC_TAG] = vcc;
+//
+//  // Prepare the response
+//  char response[JSON_RESPONSE_SIZE];
+//  sprintf(response, "%s %s\r\n" 
+//         "%s: %s\r\n\r\n"  
+//         "%s\r\n", HTTP_VERSION, HTTP_CODE, HTTP_HDR_CONTENT_TYPE_TAG, HTTP_HDR_CONTENT_TYPE_JSON,
+//         JSON.stringify(json).c_str());
+//
+//  Serial.print("RESPONSE:");  
+//  Serial.println(response);  
+//
+//  // Send the response to the client
+//  aClient.flush();
+//  aClient.print(response);
+//}
 
 
 /**
  * Handles all Get Requests 
  * These will not change the state of the system
- *    light status
- *    VCC value
+ * 
+ * This is basically the setting page
  */
 void handleGet(WiFiClient& aClient, char* aEndPoint){
   int num_seps = getNumOccurrances(aEndPoint, END_POINT_SEPARATOR);
@@ -652,33 +652,31 @@ void handleGet(WiFiClient& aClient, char* aEndPoint){
 
   if(0==strcmp(ADMIN_COMMAND, ep_commands[0])){
     handleAdminView(aClient, ep_commands);
-  } else if (0==strcmp(LIGHTS_COMMAND, ep_commands[0])){
-    handleLightsView(aClient, ep_commands);
+//  } else if (0==strcmp(LIGHTS_COMMAND, ep_commands[0])){
+//    handleLightsView(aClient, ep_commands);
   } else {
     handleUnsupported(aClient, aEndPoint);    
   }
-
   
   Serial.print("Get Complete\n");
-
 }
 
-/**
- * Handles all Put Requests
- *    lights on/off
- */
-void handlePut(WiFiClient& aClient, char* aEndPoint){
-  int num_seps = getNumOccurrances(aEndPoint, END_POINT_SEPARATOR);
-
-  char* ep_commands[num_seps];
-  split(aEndPoint, END_POINT_SEPARATOR, ep_commands, num_seps);
-
-  if (0==strcmp(LIGHTS_COMMAND, ep_commands[0])){
-    handleLightsChange(aClient, ep_commands);
-  } else {
-    handleUnsupported(aClient, aEndPoint);    
-  }  
-}
+///**
+// * Handles all Put Requests
+// *    lights on/off
+// */
+//void handlePut(WiFiClient& aClient, char* aEndPoint){
+//  int num_seps = getNumOccurrances(aEndPoint, END_POINT_SEPARATOR);
+//
+//  char* ep_commands[num_seps];
+//  split(aEndPoint, END_POINT_SEPARATOR, ep_commands, num_seps);
+//
+//  if (0==strcmp(LIGHTS_COMMAND, ep_commands[0])){
+//    handleLightsChange(aClient, ep_commands);
+//  } else {
+//    handleUnsupported(aClient, aEndPoint);    
+//  }  
+//}
 
 /**
  * Handles all Put Requests
@@ -707,8 +705,8 @@ void handleAdminView(WiFiClient& aClient, char** aCommandArray){
   if(0==strcmp(WIFI, aCommandArray[1])){
     showSettingsChangeForm(aClient);     
 //    Serial.print("Here101\n");
-  }else if(0==strcmp(VCC, aCommandArray[1])){
-    handleVccView(aClient);
+//  }else if(0==strcmp(VCC, aCommandArray[1])){
+//    handleVccView(aClient);
   } else {
     handleUnsupported(aClient, aCommandArray[1]);    
   }
@@ -717,42 +715,42 @@ void handleAdminView(WiFiClient& aClient, char** aCommandArray){
 }
 
 
-/**
- * Handles lights commands
- */
-void handleLightsChange(WiFiClient& aClient, char** aCommandArray){
-  Serial.print("handleLightsChange:");  
-  Serial.println(aCommandArray[1]);  
-
-  int val = 0;
-
-  JSONVar json;
-  const char * status = LIGHTS_STATUS_UNKNOWN;
-  if(0==strcmp(LIGHTS_ON, aCommandArray[1])){
-     status = LIGHTS_STATUS_ON;
-     setLights(true);
-  } else if (0==strcmp(LIGHTS_OFF, aCommandArray[1])){
-    status = LIGHTS_STATUS_OFF;
-    setLights(false);
-  } else {
-    handleUnsupported(aClient, aCommandArray[1]);    
-  }
-  json[JSON_LIGHTS_TAG] = status;
-
-  // Prepare the response
-  char response[JSON_RESPONSE_SIZE];
-  sprintf(response, "%s %s\r\n" 
-         "%s: %s\r\n\r\n"  
-         "%s\r\n", HTTP_VERSION, HTTP_CODE, HTTP_HDR_CONTENT_TYPE_TAG, HTTP_HDR_CONTENT_TYPE_JSON,
-         JSON.stringify(json).c_str());
-  
-  Serial.print("RESPONSE:");  
-  Serial.println(response);  
-
-  // Send the response to the client
-  aClient.flush();
-  aClient.print(response);
-}
+///**
+// * Handles lights commands
+// */
+//void handleLightsChange(WiFiClient& aClient, char** aCommandArray){
+//  Serial.print("handleLightsChange:");  
+//  Serial.println(aCommandArray[1]);  
+//
+//  int val = 0;
+//
+//  JSONVar json;
+//  const char * status = LIGHTS_STATUS_UNKNOWN;
+//  if(0==strcmp(LIGHTS_ON, aCommandArray[1])){
+//     status = LIGHTS_STATUS_ON;
+//     setLights(true);
+//  } else if (0==strcmp(LIGHTS_OFF, aCommandArray[1])){
+//    status = LIGHTS_STATUS_OFF;
+//    setLights(false);
+//  } else {
+//    handleUnsupported(aClient, aCommandArray[1]);    
+//  }
+//  json[JSON_LIGHTS_TAG] = status;
+//
+//  // Prepare the response
+//  char response[JSON_RESPONSE_SIZE];
+//  sprintf(response, "%s %s\r\n" 
+//         "%s: %s\r\n\r\n"  
+//         "%s\r\n", HTTP_VERSION, HTTP_CODE, HTTP_HDR_CONTENT_TYPE_TAG, HTTP_HDR_CONTENT_TYPE_JSON,
+//         JSON.stringify(json).c_str());
+//  
+//  Serial.print("RESPONSE:");  
+//  Serial.println(response);  
+//
+//  // Send the response to the client
+//  aClient.flush();
+//  aClient.print(response);
+//}
 
 
 
@@ -761,7 +759,7 @@ void handleLightsChange(WiFiClient& aClient, char** aCommandArray){
  */
 void showSettingsChangeForm(WiFiClient& aClient){
 
-   Serial.println("Showing Wifi Change Form:");
+   Serial.println("Showing Setttings Form:");
   char web_page[WIFI_WEB_PAGE_SIZE];
 
    sprintf(web_page, "%s %s\r\n" 
@@ -785,7 +783,7 @@ void showSettingsChangeForm(WiFiClient& aClient){
          "<body>\n"
          "   <form id=\"contact-form\" action=\"%s\" method=\"post\">\n"
          "      <fieldset>\n"
-         "         <legend>WiFi Configuration</legend>\n"
+         "         <legend>Configuration</legend>\n"
          "         <ul>\n"
          "            <li>\n"
          "               <label for=\"ssid\">SSID:</label>"
@@ -804,6 +802,10 @@ void showSettingsChangeForm(WiFiClient& aClient){
          "            </li>\n"        
          "            <li>\n"
          "               <label for=\"server-port\">Server Port:</label>"
+         "               <input type=\"text\" id=\"%s\" name=\"%s\" />\n"
+         "            </li>\n"
+         "            <li>\n"
+         "               <label for=\"server-end-point\">End Point:</label>"
          "               <input type=\"text\" id=\"%s\" name=\"%s\" />\n"
          "            </li>\n"
          "         </ul>\n"
@@ -839,7 +841,8 @@ void showSettingsChangeForm(WiFiClient& aClient){
          "</body>\n",
          HTTP_VERSION, HTTP_CODE, HTTP_HDR_CONTENT_TYPE_TAG, HTTP_HDR_CONTENT_TYPE_HTML,
          SET_CONFIG_COMMAND, WIFI_SSID, WIFI_SSID, WIFI_PASSWORD, WIFI_PASSWORD, 
-         SERVER_IP, SERVER_IP, SERVER_PORT, SERVER_PORT, MQTT_IP, MQTT_IP, MQTT_PORT, MQTT_PORT,
+         SERVER_IP, SERVER_IP, SERVER_PORT, SERVER_PORT, SERVER_END_POINT, SERVER_END_POINT, 
+         MQTT_IP, MQTT_IP, MQTT_PORT, MQTT_PORT,
          MQTT_USER, MQTT_USER, MQTT_PASSWORD, MQTT_PASSWORD, MQTT_TOPIC, MQTT_TOPIC );
 
   Serial.print("Size of web page:");
@@ -847,13 +850,11 @@ void showSettingsChangeForm(WiFiClient& aClient){
 
   aClient.flush();
   aClient.print(web_page);
-
-  Serial.print("Show Complete\n");
-
 }
 
 /**
- * This handles the POST command that sets the WiFi Credentials
+ * This handles the POST command that sets the WiFi Credentials 
+ * and other settings
  */
 void handleUpdateSettings(WiFiClient& aClient){
 
@@ -862,6 +863,7 @@ void handleUpdateSettings(WiFiClient& aClient){
    bool found_password = false;
    bool found_server_ip = false;
    bool found_server_port = false;
+   bool found_server_end_point = false;
    bool found_mqtt_ip = false;
    bool found_mqtt_port = false;
    bool found_mqtt_user = false;
@@ -869,7 +871,7 @@ void handleUpdateSettings(WiFiClient& aClient){
    bool found_mqtt_topic = false;
    
    JSONVar json;
-   json[JSON_WIFI_RESET_TAG] = POST_RESP_FAILURE;
+   json[JSON_CONFIG_RESET_TAG] = POST_RESP_FAILURE;
 
    //Reads the header
    getHeader(aClient, body_size_from_hdr);
@@ -878,61 +880,41 @@ void handleUpdateSettings(WiFiClient& aClient){
    Serial.println(body_size_from_hdr);      
 
    //Reads Body
-//   Serial.println("Here 401");    
-   aClient.setTimeout(500);
+   aClient.setTimeout(SERVER_READ_TIMEOUT_MS);
 
-//   String body = "test";
    char body_buf[body_size_from_hdr+1];
    memset(body_buf, '\0', body_size_from_hdr+1);
    
    char* body_p = body_buf;
-//   aClient.readBytes(body_buf, 1); //read newline
-//   aClient.readBytes(body_buf, body_size_from_hdr+1);
    int b_read = aClient.readBytes(body_buf, body_size_from_hdr);
    Serial.print("Bytes Read:");    
    Serial.println(b_read);    
    Serial.print("buffer:");    
    Serial.println(body_buf);    
-   
-   //String body = aClient.readString(); 
-//   String body = aClient.readStringUntil('\r');
-//   Serial.println("Here 402");    
-//   body.trim();
-//   Serial.println("Here 403");    
-   
-//   Serial.print("HTTP Body:");
-//   Serial.println(buffer);      
-//
-//   int read_body_len = body.length();
-//   Serial.print("Body length read:");
-//   Serial.println(read_body_len);           
-//     
-//   char body_buf[read_body_len+1]; //for terminator
-//   body.toCharArray(body_buf, read_body_len+1);
-
+  
    if('\n' == body_buf[0]){
       Serial.println("First char is newline removing");
-//      *body_buf++;
        ++body_p;
    }
-//   Serial.print("First char is:");
-//   Serial.println(body_buf[0]);
 
+   //This decodes the special characters like @ etc which are encoded as %40 (URL Decoding)
+   char decoded_str[percent::decodeLength(body_p)];
+   percent::decode(body_p, decoded_str);
+   Serial.print("URL Decoded Output:");
+   Serial.println(decoded_str);
+   
    //Gets the number of parameters (should be 2, ssid and password)
-//   int num_sep = getNumOccurrances(body_buf, POST_PARAM_SEPARATOR);
-   int num_sep = getNumOccurrances(body_p, POST_PARAM_SEPARATOR);
+   int num_sep = getNumOccurrances(decoded_str, POST_PARAM_SEPARATOR);
    Serial.print("num of parameters:");
    Serial.println(num_sep);
 
    if (num_sep > 0){
       char* parameters[num_sep+1];
-//      split(body_buf, POST_PARAM_SEPARATOR, parameters, num_sep);
-      split(body_p, POST_PARAM_SEPARATOR, parameters, num_sep);
+      split(decoded_str, POST_PARAM_SEPARATOR, parameters, num_sep);
       Serial.print("params[0]:");
       Serial.println(parameters[0]);
       Serial.print("params[1]:");
       Serial.println(parameters[1]);
-
 
       for(int i=0; i<(num_sep+1); i++){
          //Processes each parameter separately
@@ -942,55 +924,47 @@ void handleUpdateSettings(WiFiClient& aClient){
             char* key_value[2] = {NULL, NULL};
             split(parameters[i], POST_KEY_VALUE_SEPARATOR, key_value, 1);
 
-
             if(0==strcmp(WIFI_SSID, key_value[0])){
-               Serial.print("Found SSID:");
-               Serial.print("SSID Len:");
+               Serial.printf("Found SSID:%s len(%d)\n", key_value[1], strlen(key_value[1]));
                if((NULL == key_value[1]) ||
                   (strlen(key_value[1]) > MAX_WIFI_SSID_LENGTH) ||
                   (strlen(key_value[1]) <= 0)){
                   json[JSON_ERROR_TAG] = JSON_ERROR_BAD_SSID_LEN;
                   Serial.println(JSON_ERROR_BAD_SSID_LEN);
                } else {               
-                 Serial.println(strlen(key_value[1]));
                  strcpy(g_settings.ssid, key_value[1]);
                  found_ssid = true;
                }
-               Serial.print(":");
-               Serial.println(key_value[1]);
+//               Serial.print(":");
+//               Serial.println(key_value[1]);
             } else if (0==strcmp(WIFI_PASSWORD, key_value[0])){
-               Serial.print("Found Password:");
-               Serial.print("Password Len:");
+               Serial.printf("Found Password:%s len(%d)\n", key_value[1], strlen(key_value[1]));
                if((NULL == key_value[1]) ||
                   (strlen(key_value[1]) > MAX_WIFI_PASSWORD_LENGTH) ||
                   (strlen(key_value[1]) <= 0)){
                   json[JSON_ERROR_TAG] = JSON_ERROR_BAD_PWD_LEN;
                   Serial.println(JSON_ERROR_BAD_PWD_LEN);
                } else {               
-                  Serial.println(strlen(key_value[1]));
                   strcpy(g_settings.wifiPassword, key_value[1]);
                   found_password = true;
                }
-               Serial.print(":");
-               Serial.println(key_value[1]);
+//               Serial.print(":");
+//               Serial.println(key_value[1]);
             } else if (0==strcmp(SERVER_IP, key_value[0])){
-               Serial.print("Found Server IP:");
-               Serial.print("Server IP Len:");
+               Serial.printf("Found Server IP:%s len(%d)\n", key_value[1], strlen(key_value[1]));
                if((NULL == key_value[1]) ||
                   (strlen(key_value[1]) > IP_ADDR_LENGTH) ||
                   (strlen(key_value[1]) <= 0)){
                   json[JSON_ERROR_TAG] = JSON_ERROR_BAD_SERVER_IP_LEN;
                   Serial.println(JSON_ERROR_BAD_SERVER_IP_LEN);
                } else {               
-                  Serial.println(strlen(key_value[1]));
                   strcpy(g_settings.serverIPAddress, key_value[1]);
                   found_server_ip = true;
                }
-               Serial.print(":");
-               Serial.println(key_value[1]);
+//               Serial.print(":");
+//               Serial.println(key_value[1]);
             } else if (0==strcmp(SERVER_PORT, key_value[0])){
-               Serial.print("Found Server Port:");
-               Serial.println(key_value[1]);
+               Serial.printf("Found Server Port:%s len(%d)\n", key_value[1], strlen(key_value[1]));
 
                uint16_t value = (uint16_t)strtol(key_value[1], NULL, 10);
                if((value < 1023) ||
@@ -1002,40 +976,49 @@ void handleUpdateSettings(WiFiClient& aClient){
                   //strcpy(g_settings.mqttPort, key_value[1]);
                   g_settings.serverPort = value;
                   found_server_port = true;                
+               }               
+//               Serial.print(":");
+//               Serial.println(key_value[1]);
+            } else if (0==strcmp(SERVER_END_POINT, key_value[0])){
+               Serial.printf("Found Server End Point:%s len(%d)\n", key_value[1], strlen(key_value[1]));
+               if((NULL == key_value[1]) ||
+                  (strlen(key_value[1]) > SERVER_END_POINT_LENGTH) ||
+                  (strlen(key_value[1]) <= 0)){
+                  json[JSON_ERROR_TAG] = JSON_ERROR_BAD_SERVER_END_POINT_LEN;
+                  Serial.println(JSON_ERROR_BAD_SERVER_END_POINT_LEN);
+               } else {               
+ //                 Serial.println(strlen(key_value[1]));
+
+                  char *value_ptr = key_value[1];
+                  while('/' == value_ptr[0]){
+                    ++value_ptr;
+                  }
+                  Serial.print("Adjusted value:");
+                  Serial.println(value_ptr);
+                  
+                  //strcpy(g_settings.serverEndPoint, key_value[1]);
+                  strcpy(g_settings.serverEndPoint, value_ptr);
+                  found_server_end_point = true;
                }
-               
-//               Serial.print("Server Port Len:");
-//               if((NULL == key_value[1]) ||
-//                  (strlen(key_value[1]) > PORT_STR_LENGTH) ||
-//                  (strlen(key_value[1]) <= 0)){
-//                  json[JSON_ERROR_TAG] = JSON_ERROR_BAD_SERVER_PORT_LEN;
-//                  Serial.println(JSON_ERROR_BAD_SERVER_PORT_LEN);
-//               } else {               
-//                  Serial.println(strlen(key_value[1]));
-//                  //strcpy(g_settings.serverPort, key_value[1]);
-//                  g_settings.serverPort = (unsigned short)strtol(key_value[1], NULL, 10);
-//                  found_server_port = true;
-//               }
-               Serial.print(":");
-               Serial.println(key_value[1]);
+//               Serial.print(":");
+//               Serial.println(key_value[1]);
             } else if (0==strcmp(MQTT_IP, key_value[0])){
-               Serial.print("Found MQTT IP:");
-               Serial.print("MQTT IP Len:");
+               Serial.printf("Found MQTT IP:%s len(%d)\n", key_value[1], strlen(key_value[1]));
                if((NULL == key_value[1]) ||
                   (strlen(key_value[1]) > IP_ADDR_LENGTH) ||
                   (strlen(key_value[1]) <= 0)){
                   json[JSON_ERROR_TAG] = JSON_ERROR_BAD_MQTT_IP_LEN;
                   Serial.println(JSON_ERROR_BAD_MQTT_IP_LEN);
                } else {               
-                  Serial.println(strlen(key_value[1]));
+//                  Serial.println(strlen(key_value[1]));
+                  
                   strcpy(g_settings.mqttIPAddress, key_value[1]);
                   found_mqtt_ip = true;
                }
-               Serial.print(":");
-               Serial.println(key_value[1]);
+//               Serial.print(":");
+//               Serial.println(key_value[1]);
             } else if (0==strcmp(MQTT_PORT, key_value[0])){
-               Serial.print("Found MQTT Port:");
-               Serial.println(key_value[1]);
+               Serial.printf("Found MQTT Port:%s len(%d)\n", key_value[1], strlen(key_value[1]));
 
                uint16_t value = (uint16_t)strtol(key_value[1], NULL, 10);
                if((value < 1023) ||
@@ -1047,81 +1030,63 @@ void handleUpdateSettings(WiFiClient& aClient){
                   //strcpy(g_settings.mqttPort, key_value[1]);
                   g_settings.mqttPort = value;
                   found_mqtt_port = true;                
-               }
+               }               
 
-               
-               //Serial.print("MQTT Port Len:");               
-//               if((NULL == key_value[1]) ||
-//                  (strlen(key_value[1]) > PORT_STR_LENGTH) ||
-//                  (strlen(key_value[1]) <= 0)){
-//                  json[JSON_ERROR_TAG] = JSON_ERROR_BAD_MQTT_PORT_LEN;
-//                  Serial.println(JSON_ERROR_BAD_MQTT_PORT_LEN);
-//               } else {               
-//                  Serial.println(strlen(key_value[1]));
-//                  //strcpy(g_settings.mqttPort, key_value[1]);
-//                  g_settings.mqttPort = (unsigned short)strtol(key_value[1], NULL, 10);
-//                  found_mqtt_port = true;
-//               }
-               Serial.print(":");
-               Serial.println(key_value[1]);
+//               Serial.print(":");
+//               Serial.println(key_value[1]);
             } else if (0==strcmp(MQTT_USER, key_value[0])){
-               Serial.print("Found MQTT User:");
-               Serial.print("MQTT User Len:");
+               Serial.printf("Found MQTT User:%s len(%d)\n", key_value[1], strlen(key_value[1]));
                if((NULL == key_value[1]) ||
                   (strlen(key_value[1]) > MAX_MQTT_USER_LENGTH) ||
                   (strlen(key_value[1]) <= 0)){
                   json[JSON_ERROR_TAG] = JSON_ERROR_BAD_MQTT_USER_LEN;
                   Serial.println(JSON_ERROR_BAD_MQTT_USER_LEN);
                } else {               
-                  Serial.println(strlen(key_value[1]));
+//                  Serial.println(strlen(key_value[1]));
                   strcpy(g_settings.mqttUser, key_value[1]);
                   found_mqtt_user = true;
                }
-               Serial.print(":");
-               Serial.println(key_value[1]);
+//               Serial.print(":");
+//               Serial.println(key_value[1]);
             } else if (0==strcmp(MQTT_PASSWORD, key_value[0])){
-               Serial.print("Found MQTT Password:");
-               Serial.print("MQTT Password Len:");
+               Serial.printf("Found MQTT Password:%s len(%d)\n", key_value[1], strlen(key_value[1]));
                if((NULL == key_value[1]) ||
                   (strlen(key_value[1]) > MAX_MQTT_PASSWORD_LENGTH) ||
                   (strlen(key_value[1]) <= 0)){
                   json[JSON_ERROR_TAG] = JSON_ERROR_BAD_MQTT_PASSWORD_LEN;
                   Serial.println(JSON_ERROR_BAD_MQTT_PASSWORD_LEN);
                } else {               
-                  Serial.println(strlen(key_value[1]));
+//                  Serial.println(strlen(key_value[1]));
                   strcpy(g_settings.mqttPassword, key_value[1]);
                   found_mqtt_password = true;
                }
-               Serial.print(":");
-               Serial.println(key_value[1]);
+//               Serial.print(":");
+//               Serial.println(key_value[1]);
             } else if (0==strcmp(MQTT_TOPIC, key_value[0])){
-               Serial.print("Found MQTT Port:");
-               Serial.print("MQTT Port Len:");
+               Serial.printf("Found MQTT Topic:%s len(%d)\n", key_value[1], strlen(key_value[1]));
                if((NULL == key_value[1]) ||
                   (strlen(key_value[1]) > MAX_MQTT_TOPIC_LENGTH) ||
                   (strlen(key_value[1]) <= 0)){
                   json[JSON_ERROR_TAG] = JSON_ERROR_BAD_MQTT_TOPIC_LEN;
                   Serial.println(JSON_ERROR_BAD_MQTT_TOPIC_LEN);
                } else {               
-                  Serial.println(strlen(key_value[1]));
+//                  Serial.println(strlen(key_value[1]));
                   strcpy(g_settings.mqttTopic, key_value[1]);
                   found_mqtt_topic = true;
                }
-               Serial.print(":");
-               Serial.println(key_value[1]);
+//               Serial.print(":");
+//               Serial.println(key_value[1]);
             }
          }
       }
    }
 
-   
-
    bool success = false;
-   if (found_ssid && found_password & found_server_ip & found_server_port & 
+   if (found_ssid && found_password & found_server_ip & found_server_port & found_server_end_point & 
        found_mqtt_ip & found_mqtt_port & found_mqtt_user & found_mqtt_password &
        found_mqtt_topic){
       saveSettingsData();
-      json[JSON_WIFI_RESET_TAG] = POST_RESP_SUCCESS;
+      json[JSON_CONFIG_RESET_TAG] = POST_RESP_SUCCESS;
       success = true;
    }   
      
@@ -1129,6 +1094,7 @@ void handleUpdateSettings(WiFiClient& aClient){
    json[WIFI_PASSWORD] = g_settings.wifiPassword;
    json[SERVER_IP] = g_settings.serverIPAddress;
    json[SERVER_PORT] = g_settings.serverPort;
+   json[SERVER_END_POINT] = g_settings.serverEndPoint;
    json[MQTT_IP] = g_settings.mqttIPAddress;
    json[MQTT_PORT] = g_settings.mqttPort;
    json[MQTT_USER] = g_settings.mqttUser;
@@ -1151,10 +1117,18 @@ void handleUpdateSettings(WiFiClient& aClient){
 
    if(success){
       delay(10);       
-      Serial.print("About ro restart chip");  
+      Serial.println("About to restart chip");  
       ESP.restart();
    }
 }
+
+void factory_reset(){
+   Serial.println("Reset recevied, clearing memory");
+   reset_to_factory_settings();
+   Serial.print("About to restart chip");  
+   ESP.restart();
+}
+
 
 /***************************************************************************
  * Resets the settings data to defaults. This is the only way to change
@@ -1162,20 +1136,27 @@ void handleUpdateSettings(WiFiClient& aClient){
  ***************************************************************************/
 void reset_to_factory_settings(){
 
-  strcpy(g_settings.ssid, FR_WIFI_SSID);
-  strcpy(g_settings.wifiPassword, FR_WIFI_PASS);
-  strcpy(g_settings.serverIPAddress, FR_SERVER_IP);
-  g_settings.serverPort = FR_SERVER_PORT;
-  strcpy(g_settings.mqttIPAddress, FR_MQTT_IP);
-  g_settings.mqttPort = FR_MQTT_PORT;
-  strcpy(g_settings.mqttUser, FR_MQTT_USER);
-  strcpy(g_settings.mqttPassword, FR_MQTT_PASSWORD);
-  strcpy(g_settings.mqttTopic, FR_MQTT_TOPIC);
-
+   strcpy(g_settings.ssid, FR_WIFI_SSID);
+   strcpy(g_settings.wifiPassword, FR_WIFI_PASS);
+   strcpy(g_settings.serverIPAddress, FR_SERVER_IP);
+   g_settings.serverPort = FR_SERVER_PORT;
+   strcpy(g_settings.serverEndPoint, FR_SERVER_END_POINT);
+   strcpy(g_settings.mqttIPAddress, FR_MQTT_IP);
+   g_settings.mqttPort = FR_MQTT_PORT;
+   strcpy(g_settings.mqttUser, FR_MQTT_USER);
+   strcpy(g_settings.mqttPassword, FR_MQTT_PASSWORD);
+   strcpy(g_settings.mqttTopic, FR_MQTT_TOPIC);
    saveSettingsData();
+
+   g_pin_state = false;
+   savePinState();
 }
 
 
+/**
+ * Gets the battery voltage - will only work if the voltage divider has been 
+ * soldered to that pin
+ */
 float getVCC(){
   uint32_t vbattery = 0;
 
@@ -1183,7 +1164,7 @@ float getVCC(){
      vbattery = vbattery + analogReadMilliVolts(VCC_PIN); //ACV with correction     
   }
   float vbattery_f = 2 * vbattery / 16 / 1000.0; // Attenuation ratio 1/2 and mV to V
-  Serial.print("Battery:");
+  Serial.print("Battery(V):");
   Serial.println(vbattery_f);
 
   return vbattery_f;
@@ -1203,7 +1184,10 @@ void loop() {
   }
 }
 
-
+/**
+ * Main loop when in server mode - waits for everything, including WiFi details
+ * to be set
+ */
 void doServer() {
 //  Serial.print("\nLoopy");
   
@@ -1215,13 +1199,12 @@ void doServer() {
     return;
   }
   client.setTimeout(WIFI_CLIENT_READ_TIMEOUT_MS);
-  
-  Serial.print("\nNew client connected from ");
-  Serial.println(client.remoteIP());
-  
+    
   while(!client.available()){
     delay(1);
   }
+  Serial.print("\nNew client connected from ");
+  Serial.println(client.remoteIP());
   
   // Read the first line of the request
   String req = client.readStringUntil('\r');
@@ -1243,8 +1226,8 @@ void doServer() {
     
     if(0==strcmp(REST_GET, command)){
       handleGet(client, end_point);
-    } else if (0==strcmp(REST_PUT, command)){
-      handlePut(client, end_point);
+//    } else if (0==strcmp(REST_PUT, command)){
+//      handlePut(client, end_point);
     } else if (0==strcmp(REST_POST, command)){
       handlePost(client, end_point);
     } else {
@@ -1264,45 +1247,25 @@ void doServer() {
 
 void doClient() {
 
-   Serial.println("Creating Client");
-
-/******************************************** MQTT ******************************************************/
-//   const char* mqtt_server = "192.168.0.124";
-//   const uint16_t mqtt_server_port = 1883; 
-//   const char* mqtt_server = mqttIPAddress;
-//   const uint16_t mqtt_server_port = 1883; 
-//   const char* mqtt_user = "alex";
-//   const char* mqtt_password = "Pl@5m0d!um";
-//   const char *topic = "esp8266/db5";
-
    float vcc = getVCC();
-
-
-//  char mqttIPAddress[IP_ADDR_LENGTH];
-//  char mqttPort[PORT_STR_LENGTH];
-//  char mqttUser[MAX_MQTT_USER_LENGTH];
-//  char mqttPassword[MAX_MQTT_PASSWORD_LENGTH];
-//  char mqttTopic[MAX_MQTT_TOPIC_LENGTH];
-
-
-/***********************************************************************************************************/
+   int time_to_sleep = DEFAULT_SLEEP_PERIOD_MS;
 
    WiFiClient wifi_client;  // or WiFiClientSecure for HTTPS
    HTTPClient http;
-   
 
-/*******************************************************************************************************/
+   char server_url[MAX_SERVER_URL_LEN];
+   sprintf(server_url, "http://%s:%d/%s", g_settings.serverIPAddress, g_settings.serverPort, g_settings.serverEndPoint);
 
-   // Send request
-   const char *server_url = "http://192.168.0.124:3000/db5/status";
-
-//   http.useHTTP10(true);
    Serial.printf("Sending request to %s\n", server_url);
    http.begin(wifi_client, server_url);
    Serial.print("Calling GET:");
    int resp_code = http.GET();
    Serial.println(resp_code);
 
+  
+   if(FORCE_RESET){
+      factory_reset();
+   }
 
    if(resp_code > 0) {
       // Print the response
@@ -1318,14 +1281,11 @@ void doClient() {
          }
       }
       
-
       JSONVar resp_json = JSON.parse(http_response);
       Serial.println(JSON.stringify(http_response).c_str());
 
-
       Serial.print("JSON.typeof:");
       Serial.println(JSON.typeof(resp_json));
-
 
       if (JSON.typeof(resp_json) == "undefined") {
          Serial.println("Parsing input failed!");
@@ -1335,6 +1295,8 @@ void doClient() {
          Serial.println(resp_json[JSON_LIGHTS_TAG]);
          Serial.print("Reset Status:");
          Serial.println(resp_json[JSON_RESET_TAG]);
+         Serial.print("Time To Sleep Value:");
+         Serial.println(resp_json[JSON_TTS_TAG]);
 
          if(null != resp_json[JSON_LIGHTS_TAG]){
             if (0 == strcmp(resp_json[JSON_LIGHTS_TAG], LIGHTS_STATUS_ON)){
@@ -1345,20 +1307,28 @@ void doClient() {
                setLights(false);
             } 
          }
+         
+         if(null != resp_json[JSON_TTS_TAG]){
+            time_to_sleep = atoi(resp_json[JSON_TTS_TAG]);
+            Serial.print("Time To Sleep recevied(ms):");
+            Serial.println(time_to_sleep);            
+         }
 
-         if(null != resp_json[JSON_LIGHTS_TAG]){
+         if(null != resp_json[JSON_RESET_TAG]){
             if(0 == strcmp(resp_json[JSON_RESET_TAG], RESET_STATUS_TRUE)){
-               Serial.println("Reset recevied, clearing memory");
-               reset_to_factory_settings();
-               Serial.print("About to restart chip");  
-               ESP.restart();
+//               Serial.println("Reset recevied, clearing memory");
+//               reset_to_factory_settings();
+//               Serial.print("About to restart chip");  
+//               ESP.restart();
+                factory_reset();
             }
          }
 
       }
     
    }else {
-      Serial.println("Error Connecting");    
+      Serial.print("Error Connecting, return code=");    
+      Serial.println(resp_code);
    }
    http.end();
 
@@ -1373,16 +1343,35 @@ void doClient() {
    
    mqtt_client.setServer(g_settings.mqttIPAddress, g_settings.mqttPort);
 
-   while (!mqtt_client.connected()) {
+   mqtt_client.setKeepAlive(MQTT_CONNECT_TIMEOUT_S); 
+   mqtt_client.setSocketTimeout(MQTT_CONNECT_TIMEOUT_S); 
+
+   int mqtt_connection_attempts = (MQTT_CONNECT_TIMEOUT_S * 1000) / MQTT_CONNECT_DELAY_MS;
+   
+   while ((!mqtt_client.connected()) && (0 < mqtt_connection_attempts)) {
       String client_id = "esp32c3-client-";
       client_id += String(WiFi.macAddress());
-      Serial.printf("The client %s connects to the public mqtt broker with %s/%s \n", client_id.c_str(), g_settings.mqttUser, g_settings.mqttPassword);
+      Serial.printf("%s - Attempting to connect to the mqtt broker with %s/%s %d times.\n", client_id.c_str(), g_settings.mqttUser, g_settings.mqttPassword, mqtt_connection_attempts);
+      //if (mqtt_client.connect(client_id.c_str(), g_settings.mqttUser, g_settings.mqttPassword)) {
       if (mqtt_client.connect(client_id.c_str(), g_settings.mqttUser, g_settings.mqttPassword)) {
       } else {
+      /**
+        -4 : MQTT_CONNECTION_TIMEOUT - the server didn't respond within the keepalive time
+        -3 : MQTT_CONNECTION_LOST - the network connection was broken
+        -2 : MQTT_CONNECT_FAILED - the network connection failed
+        -1 : MQTT_DISCONNECTED - the client is disconnected cleanly
+         0 : MQTT_CONNECTED - the client is connected
+         1 : MQTT_CONNECT_BAD_PROTOCOL - the server doesn't support the requested version of MQTT
+         2 : MQTT_CONNECT_BAD_CLIENT_ID - the server rejected the client identifier
+         3 : MQTT_CONNECT_UNAVAILABLE - the server was unable to accept the connection
+         4 : MQTT_CONNECT_BAD_CREDENTIALS - the username/password were rejected
+         5 : MQTT_CONNECT_UNAUTHORIZED - the client was not authorized to connect
+      */  
          Serial.print("failed with state ");
          Serial.println(mqtt_client.state());
-         delay(2000); //To prevent looping
-         break;
+         delay(MQTT_CONNECT_DELAY_MS); //To prevent looping
+         --mqtt_connection_attempts;
+         //break;         
       }
    }
 
@@ -1394,17 +1383,17 @@ void doClient() {
       json_packet[JSON_LIGHTS_TAG] = LIGHTS_STATUS_OFF;
    }
    json_packet[JSON_VCC_TAG] = vcc;
-
-
-   Serial.println(JSON.stringify(json_packet).c_str());
    
-   mqtt_client.publish(g_settings.mqttTopic, JSON.stringify(json_packet).c_str());
+   bool pub_state = mqtt_client.publish(g_settings.mqttTopic, JSON.stringify(json_packet).c_str());
    /**************************************************************************************/
+   Serial.print("MQTT Published:");
+   Serial.println(pub_state);
+   Serial.println(JSON.stringify(json_packet).c_str());
 
-
-   int sleep_len_ms = 10000;
-   delay(sleep_len_ms);
-
+//   int sleep_len_ms = 60000;
+   Serial.print("Sleeping for(ms):");
+   Serial.println(time_to_sleep);
+   delay(time_to_sleep);
 
 
 ////   int loop_delay = 60000;
