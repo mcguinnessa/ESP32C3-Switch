@@ -42,6 +42,11 @@ const int MAX_MQTT_PASSWORD_LENGTH = 32;
 //const int MAX_MQTT_TOPIC_LENGTH    = 32;
 const int MAX_INSTANCE_ID_LENGTH    = 32;
 
+const uint16_t MAX_PORT                = 65535;
+const uint16_t MIN_SERVER_PORT         = 80;
+const uint16_t MIN_MQTT_PORT           = 1023;
+
+
 const int WIFI_CLIENT_READ_TIMEOUT_MS = 5000;
 const int SERVER_READ_TIMEOUT_MS = 500; 
 
@@ -60,6 +65,7 @@ const char* const LIGHTS_OFF        ="off";
 const char* const LIGHTS_STATUS     ="status";
 const char* const VCC               ="vcc";
 const char* const WIFI              ="wifi";
+const char* const SETTINGS              ="settings";
 const char* const WIFI_SSID         ="ssid";
 const char* const WIFI_PASSWORD     ="wifi-password";
 
@@ -82,6 +88,8 @@ const char* const JSON_RESET_TAG = "reset";
 const char* const JSON_TTS_TAG = "tts";
 const char* const RESET_STATUS_TRUE = "true";
 const char* const JSON_VCC_TAG = "vcc";
+const char* const JSON_TSS_TAG = "tss";
+const char* const JSON_LAST_SERVER_CONNECT_TAG = "lsc";
 const char* const JSON_CONFIG_RESET_TAG = "esp32-reset";
 const char* const JSON_ERROR_TAG = "error";
 const char* const POST_RESP_FAILURE = "Failure";
@@ -115,7 +123,9 @@ const char* const JSON_ERROR_BAD_INSTANCE_ID_LEN      = "Invalid Instance ID len
 
 
 const char* const SET_WIFI_URL = "/admin/settings";
+//const char* const SET_WIFI_URL = "/" + ADMIN + "/" + SETTINGS;
 const char* const SET_CONFIG_COMMAND = "/settings";
+//const char* const SET_CONFIG_COMMAND = "/" + SETTINGS;
 
 //const byte BUILTIN_LED_PIN=2;
 //const byte BUILTIN_TX_PIN=1;
@@ -415,6 +425,7 @@ int connectToWiFiNetwork(){
        Serial.println("");  
        Serial.print(get_readable_connection_status(status_code));      
     }
+    old_status = status_code;
     
     
     //Serial.print(status);
@@ -448,6 +459,7 @@ void setupAccessPoint(){
 
   WiFi.softAPConfig(AP_LOCAL_IP, AP_GATEWAY, AP_SUBNET);
 
+  Serial.println("#############################################################################\n");
   Serial.print("Starting as Access Point: Connect to ");
   WiFi.mode(WIFI_AP_STA);
   WiFi.softAP(AP_SSID, AP_PASS, /*channel no*/ NULL, /*hidden ssid*/ NULL, AP_MAX_CON);
@@ -459,8 +471,9 @@ void setupAccessPoint(){
   Serial.print("http://");
   Serial.print(WiFi.softAPIP());
   Serial.print(SET_WIFI_URL);
-  Serial.print("\n");
-  Serial.println("And set new password.");
+  Serial.println("\nAnd configure WiFi and other settings.");
+  Serial.println("\n#############################################################################");
+
 
   uint8_t macAddr[6];
   WiFi.softAPmacAddress(macAddr);
@@ -811,7 +824,7 @@ void handleAdminView(WiFiClient& aClient, char** aCommandArray){
    Serial.println(aCommandArray[1]);
 
   JSONVar json;
-  if(0==strcmp(WIFI, aCommandArray[1])){
+  if(0==strcmp(SETTINGS, aCommandArray[1])){
     showSettingsChangeForm(aClient);     
 //    Serial.print("Here101\n");
 //  }else if(0==strcmp(VCC, aCommandArray[1])){
@@ -1090,13 +1103,13 @@ void handleUpdateSettings(WiFiClient& aClient){
 //               Serial.print(":");
 //               Serial.println(key_value[1]);
             } else if (0==strcmp(SERVER_PORT, key_value[0])){
-               Serial.printf("Found Server Port:%s len(%d)\n", key_value[1], strlen(key_value[1]));
+               Serial.printf("Found Server Port:%s (Min:%d, Max:%d)\n", key_value[1], MIN_SERVER_PORT, MAX_PORT);
 
                uint16_t value = (uint16_t)strtol(key_value[1], NULL, 10);
-               if((value < 1023) ||
-                  (value > 65535)){
-                  json[JSON_ERROR_TAG] = JSON_ERROR_BAD_MQTT_PORT_LEN;
-                  Serial.println(JSON_ERROR_BAD_MQTT_PORT_LEN);
+               if((value < MIN_SERVER_PORT) ||
+                  (value > MAX_PORT)){
+                  json[JSON_ERROR_TAG] = JSON_ERROR_BAD_SERVER_PORT_LEN;
+                  Serial.println(JSON_ERROR_BAD_SERVER_PORT_LEN);
                } else {
                   //Serial.println(strlen(key_value[1]));
                   //strcpy(g_settings.mqttPort, key_value[1]);
@@ -1144,11 +1157,11 @@ void handleUpdateSettings(WiFiClient& aClient){
 //               Serial.print(":");
 //               Serial.println(key_value[1]);
             } else if (0==strcmp(MQTT_PORT, key_value[0])){
-               Serial.printf("Found MQTT Port:%s len(%d)\n", key_value[1], strlen(key_value[1]));
+               Serial.printf("Found MQTT Port:%s (Min:%d, Max:%d)\n", key_value[1], MIN_MQTT_PORT, MAX_PORT);
 
                uint16_t value = (uint16_t)strtol(key_value[1], NULL, 10);
-               if((value < 1023) ||
-                  (value > 65535)){
+               if((value < MIN_MQTT_PORT) ||
+                  (value > MAX_PORT )){
                   json[JSON_ERROR_TAG] = JSON_ERROR_BAD_MQTT_PORT_LEN;
                   Serial.println(JSON_ERROR_BAD_MQTT_PORT_LEN);
                } else {
@@ -1377,6 +1390,7 @@ void doClient() {
 
    float vcc = getVCC();
    int time_to_sleep = DEFAULT_SLEEP_PERIOD_MS;
+   bool server_connection_status = false;
 
    WiFiClient wifi_client;  // or WiFiClientSecure for HTTPS
    HTTPClient http;
@@ -1410,7 +1424,7 @@ void doClient() {
    if(resp_code == 200) {
       g_has_been_successful_at_least_once = true;
       g_failures_count = 0;
-
+      server_connection_status = true;
       // Print the response
 
       String http_response = http.getString();
@@ -1529,6 +1543,9 @@ void doClient() {
       json_packet[JSON_LIGHTS_TAG] = LIGHTS_STATUS_OFF;
    }
    json_packet[JSON_VCC_TAG] = vcc;
+   json_packet[JSON_TSS_TAG] = time_to_sleep;
+   json_packet[JSON_LAST_SERVER_CONNECT_TAG] = server_connection_status;
+
 
    String mqtt_topic = MQTT_TOPIC_PREFIX + String(g_settings.instanceId);
 
