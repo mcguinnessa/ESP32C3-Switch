@@ -68,6 +68,8 @@ const char* const WIFI              ="wifi";
 const char* const SETTINGS              ="settings";
 const char* const WIFI_SSID         ="ssid";
 const char* const WIFI_PASSWORD     ="wifi-password";
+const char* const SERVER_URL_PREFIX = "led";
+
 
 const char* const SERVER_IP         = "server-ip"; 
 const char* const SERVER_PORT       = "server-port"; 
@@ -1400,7 +1402,7 @@ void doClient() {
    //char *server_end_point = g_settings.instanceId
 
    char server_url[MAX_SERVER_URL_LEN];
-   sprintf(server_url, "http://%s:%d/%s", g_settings.serverIPAddress, g_settings.serverPort, end_point.c_str());
+   sprintf(server_url, "http://%s:%d/%s/%s", g_settings.serverIPAddress, g_settings.serverPort, SERVER_URL_PREFIX, end_point.c_str());
 
    Serial.printf("Sending request to %s\n", server_url);
    http.begin(wifi_client, server_url);
@@ -1532,6 +1534,7 @@ void doClient() {
          delay(MQTT_CONNECT_DELAY_MS); //To prevent looping
          --mqtt_connection_attempts;
       }
+      old_status = status_code;
    }
    Serial.printf("\nConnected after %d attempts \n", (total_mqtt_connection_attempts - mqtt_connection_attempts));
 
