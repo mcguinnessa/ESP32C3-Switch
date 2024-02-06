@@ -18,6 +18,7 @@
 #include <Arduino_JSON.h>
 #include <HTTPClient.h>
 #include <PubSubClient.h>
+
 #include "arduino_percent.hpp"
 
 /*****************************************************************************
@@ -29,7 +30,8 @@
 bool FORCE_RESET = false;
 /*****************************************************************************/
 
-
+const String HW_VERSION = "esp32c3";
+const String SW_VERSION = "adm-esp32pull-1.2";
 
 //EEPROM Details for non-volatile config
 const int EEPROM_SIZE              = 512;
@@ -53,7 +55,6 @@ const uint16_t MAX_PORT                = 65535;
 const uint16_t MIN_SERVER_PORT         = 80;
 const uint16_t MIN_MQTT_PORT           = 1023;
 
-
 const int WIFI_CLIENT_READ_TIMEOUT_MS = 5000;
 const int SERVER_READ_TIMEOUT_MS = 500; 
 
@@ -66,42 +67,63 @@ const char* const REST_PUT          ="PUT";
 const char* const REST_POST         ="POST";
 const char* const REST_GET          ="GET";
 const char* const ADMIN_COMMAND     ="admin";
-const char* const LIGHTS_COMMAND    ="lights";
-const char* const LIGHTS_ON         ="on";
-const char* const LIGHTS_OFF        ="off";
+//const char* const LIGHTS_COMMAND    ="lights";
+//const char* const LIGHTS_ON         ="on";
+//const char* const LIGHTS_OFF        ="off";
 const char* const LIGHTS_STATUS     ="status";
-const char* const VCC               ="vcc";
-const char* const WIFI              ="wifi";
+//const char* const VCC               ="vcc";
+//const char* const WIFI              ="wifi";
 const char* const SETTINGS          ="settings";
-const char* const WIFI_SSID         ="ssid";
-const char* const WIFI_PASSWORD     ="wifi-password";
-const char* const SERVER_URL_PREFIX = "led";
 
-const char* const SERVER_IP         = "server-ip"; 
-const char* const SERVER_PORT       = "server-port"; 
-//const char* const SERVER_END_POINT  = "server-end-point"; 
-const char* const MQTT_IP           = "mqtt-ip";
-const char* const MQTT_PORT         = "mqtt-port"; 
-const char* const MQTT_USER         = "mqtt-user";
-const char* const MQTT_PASSWORD     = "mqtt-password"; 
-//const char* const MQTT_TOPIC        = "mqtt-topic";
-const char* const INSTANCE_ID     = "instance-id"; 
+/* Config Parameters */
+const char* const WIFI_SSID             ="ssid";
+const char* const WIFI_PASSWORD         ="wifi-password";
+const char* const SERVER_URL_PREFIX     = "led";               //TODO
+const char* const SERVER_IP             = "server-ip"; 
+const char* const SERVER_PORT           = "server-port"; 
+const char* const MQTT_IP               = "mqtt-ip";
+const char* const MQTT_PORT             = "mqtt-port"; 
+const char* const MQTT_USER             = "mqtt-user";
+const char* const MQTT_PASSWORD         = "mqtt-password"; 
+const char* const MQTT_DISCOVERY_PREFIX = "homeassistant";      //TODO
+const char* const INSTANCE_ID           = "instance-id"; 
+const char* const MQTT_DISPLAY_NAME     = "Lego DB5";           //TODO
 
 //JSON Defs
-const char* const LIGHTS_STATUS_UNKNOWN = "unknown";
-const char* const LIGHTS_STATUS_ON = "on";
-const char* const LIGHTS_STATUS_OFF = "off";
-const char* const JSON_LIGHTS_TAG = "lights";
+//const char* const LIGHTS_STATUS_UNKNOWN = "unknown";
+const char* const LIGHTS_SERVER_STATUS_ON = "on";
+const char* const LIGHTS_SERVER_STATUS_OFF = "off";
+const char* const LIGHTS_MQTT_STATUS_ON = "on";
+const char* const LIGHTS_MQTT_STATUS_OFF = "off";
+const char* const CONN_MQTT_STATUS_Y = "y";
+const char* const CONN_MQTT_STATUS_N = "n";
 const char* const JSON_RESET_TAG = "reset";
-const char* const JSON_TTS_TAG = "tts";
 const char* const RESET_STATUS_TRUE = "true";
-const char* const JSON_VCC_TAG = "vcc";
-const char* const JSON_TSS_TAG = "tss";
-const char* const JSON_LAST_SERVER_CONNECT_TAG = "lsc";
-const char* const JSON_CONFIG_RESET_TAG = "esp32-reset";
+const String MQTT_JSON_LIGHTS_TAG = "lights";
+const String MQTT_JSON_TTS_TAG = "tts";
+const String MQTT_JSON_VCC_TAG = "vcc";
+const String MQTT_JSON_LSC_TAG = "lsc";
+const char* const JSON_CONFIG_RESET_TAG = "reset-config";
 const char* const JSON_ERROR_TAG = "error";
 const char* const POST_RESP_FAILURE = "Failure";
 const char* const POST_RESP_SUCCESS = "Success";
+
+const String MQTT_JSON_DEV_NAME_TAG = "name";
+const String MQTT_JSON_DEV_IDS_TAG = "ids";
+const String MQTT_JSON_DEV_HW_TAG = "hw";
+const String MQTT_JSON_DEV_SW_TAG = "sw";
+const String MQTT_JSON_NAME_TAG = "name";
+const String MQTT_JSON_STAT_TOPIC_TAG = "stat_t";
+const String MQTT_JSON_UNIQ_ID_TAG = "uniq_id";
+const String MQTT_JSON_DEVICE_CLASS_TAG = "dev_cla";
+const String MQTT_JSON_DEV_TAG = "dev";
+const String MQTT_JSON_ICON_TAG = "ic";
+const String MQTT_JSON_MEAS_UNIT_TAG = "unit_of_meas";
+const String MQTT_JSON_VAL_TEMPLATE_TAG = "val_tpl";
+const String MQTT_JSON_FORCE_UPDATE_TAG = "frc_upd";
+const String MQTT_JSON_PL_ON_TAG = "pl_on";
+const String MQTT_JSON_PL_OFF_TAG = "pl_off";
+
 
 //HTTP
 const int WIFI_WEB_PAGE_SIZE = 2944;
@@ -131,8 +153,7 @@ const char* const JSON_ERROR_BAD_MQTT_PASSWORD_LEN    = "Invalid MQTT Password l
 const char* const JSON_ERROR_BAD_INSTANCE_ID_LEN      = "Invalid Instance ID length";
 
 
-const char* const SET_WIFI_URL = "/admin/settings";
-//const char* const SET_WIFI_URL = "/" + ADMIN + "/" + SETTINGS;
+const char* const SET_CONFIG_URL = "/admin/settings";
 const char* const SET_CONFIG_COMMAND = "/settings";
 //const char* const SET_CONFIG_COMMAND = "/" + SETTINGS;
 
@@ -156,9 +177,16 @@ const char* const FR_INSTANCE_ID      = "id-esp32c3";
 const uint16_t MQTT_CONNECT_TIMEOUT_S = 5;
 const uint16_t MQTT_CONNECT_DELAY_MS = 100;
 
-const char* const MQTT_CLIENT_ID_PREFIX = "esp32c3-";
-const char* const MQTT_TOPIC_PREFIX     = "esp32c3/";
+//const char* const MQTT_CLIENT_ID_PREFIX = "esp32c3-";
+//const char* const MQTT_TOPIC_PREFIX     = "esp32c3/";
 
+const char* const DISCOVERY_TOPIC_SUFFIX= "/config";
+const char* const MQTT_TOPIC_SUFFIX = "/state";
+//const char* const DISCOVERY_TOPIC_TEMPLATE = "homeassistant/sensor/db5/%s/config";
+const String DISCOVERY_TOPIC_TTS = "tts"; 
+const String DISCOVERY_TOPIC_VCC = "vcc"; 
+const String DISCOVERY_TOPIC_LIGHTS = "lights"; 
+const String DISCOVERY_TOPIC_LSC = "lsc";
  
 /**
  * Define AP WIFI Details
@@ -214,6 +242,9 @@ int g_failures_count = 0;
 bool g_light_state = false;
 short g_mode = SERVER_MODE;
 
+String g_uniq_id = "";
+String g_mqtt_state_topic = "";
+
 
 storeStruct_t g_settings = {
   *FR_CFG_VERSION,
@@ -266,6 +297,10 @@ void setup() {
   } else {
     Serial.println("Started in Client Mode");    
     g_mode = CLIENT_MODE;
+
+   g_mqtt_state_topic = HW_VERSION +"/" + String(g_settings.instanceId) + MQTT_TOPIC_SUFFIX;
+
+    
   }
 }
 
@@ -415,6 +450,12 @@ int connectToWiFiNetwork(){
      Serial.print("\nWiFi connected with IP ");
      Serial.println(WiFi.localIP());      
      rc = true;
+
+   String mac_addr = String(WiFi.macAddress());   
+   mac_addr.replace(":","");
+   g_uniq_id = HW_VERSION +"-" + String(g_settings.instanceId) + "-" + mac_addr;
+   Serial.print("Unique ID:");   
+   Serial.println(g_uniq_id);
      
   } else {
      Serial.print("\nUnable to connect to ");
@@ -445,14 +486,14 @@ void setupAccessPoint(){
   Serial.println("Then access the URL:");
   Serial.print("http://");
   Serial.print(WiFi.softAPIP());
-  Serial.print(SET_WIFI_URL);
+  Serial.print(SET_CONFIG_URL);
   Serial.println("\nAnd configure WiFi and other settings.");
   Serial.println("\n#############################################################################");
 
 
   uint8_t macAddr[6];
   WiFi.softAPmacAddress(macAddr);
-  Serial.printf("ESP32C3 MAC address = %02x:%02x:%02x:%02x:%02x:%02x\n", macAddr[0], macAddr[1], macAddr[2], macAddr[3], macAddr[4], macAddr[5]);
+  Serial.printf("MAC address = %02x:%02x:%02x:%02x:%02x:%02x\n", macAddr[0], macAddr[1], macAddr[2], macAddr[3], macAddr[4], macAddr[5]);
 }
 
 /**
@@ -479,8 +520,8 @@ bool isReset(){
 /**
  * Checks if the MQTT Discovery flag has been set
  */
-bool isMQTTDiscoverySet(){
-  Serial.print("isDiscoverySet() - isBooleanStates:");
+bool isMQTTDiscoverySent(){
+  Serial.print("isMQTTDiscoverySent() - isBooleanStates:");
   Serial.println(g_settings.isBooleanStates, BIN);
   return g_settings.isBooleanStates & DISCOVERY_FLAG_BITMASK;
 }
@@ -501,7 +542,7 @@ void setReset(boolean aReset){
 /**
  * Sets the MQTT Discovery flag
  */
-void setDiscoverySent(boolean aSent){
+void setMQTTDiscoverySent(boolean aSent){
   if(aSent){
      bitSet(g_settings.isBooleanStates, DISCOVERY_FLAG_BIT);
   } else {
@@ -1140,6 +1181,126 @@ float getVCC(){
   return vbattery_f;
 }
 
+/***************************************************************************
+ * Sends the discovery Message
+ ***************************************************************************/
+void sendMQTTDiscoveryLights(WiFiClient& wifi_client){
+   Serial.println("Sending Lights Discovery Message");
+
+   JSONVar json_packet;
+
+   String mqtt_discovery_topic = String(MQTT_DISCOVERY_PREFIX) + "/binary_sensor/"+String(g_settings.instanceId)+"/" + DISCOVERY_TOPIC_LIGHTS + DISCOVERY_TOPIC_SUFFIX;
+
+   JSONVar json_dev;
+   json_dev[MQTT_JSON_DEV_IDS_TAG] = g_uniq_id;
+   json_dev[MQTT_JSON_DEV_NAME_TAG] = MQTT_DISPLAY_NAME;
+   json_dev[MQTT_JSON_DEV_HW_TAG] = HW_VERSION;
+   json_dev[MQTT_JSON_DEV_SW_TAG] = SW_VERSION;
+   
+   json_packet[MQTT_JSON_NAME_TAG] = "Lights";
+//   json_packet["~"] = "esp32c3/db5";
+//   json_packet["stat_t"] = "~/state"; //Must match the mqtt topic in the data packet
+   json_packet[MQTT_JSON_STAT_TOPIC_TAG] = g_mqtt_state_topic; //Must match the mqtt topic in the data packet
+   json_packet[MQTT_JSON_UNIQ_ID_TAG] = g_uniq_id+"-"+MQTT_JSON_LIGHTS_TAG;
+//   json_packet["dev_cla"] = "null";
+   json_packet[MQTT_JSON_ICON_TAG] = "mdi:lightbulb-group";
+   json_packet[MQTT_JSON_VAL_TEMPLATE_TAG] = "{{ value_json."+MQTT_JSON_LIGHTS_TAG+" }}";
+   json_packet[MQTT_JSON_FORCE_UPDATE_TAG] = true;
+   json_packet[MQTT_JSON_DEV_TAG] = json_dev;
+   json_packet[MQTT_JSON_PL_ON_TAG] = LIGHTS_MQTT_STATUS_ON;
+   json_packet[MQTT_JSON_PL_OFF_TAG] = LIGHTS_MQTT_STATUS_OFF;
+   
+   sendMQTTMessage(json_packet, mqtt_discovery_topic, wifi_client);
+}
+
+
+/***************************************************************************
+ * Sends the discovery Message
+ ***************************************************************************/
+void sendMQTTDiscoveryVcc(WiFiClient& wifi_client){
+   Serial.println("Sending VCC Discovery Message");
+
+   JSONVar json_packet;
+
+   String mqtt_discovery_topic = String(MQTT_DISCOVERY_PREFIX) + "/sensor/"+String(g_settings.instanceId)+"/"+DISCOVERY_TOPIC_VCC+DISCOVERY_TOPIC_SUFFIX;
+
+   JSONVar json_dev;
+   json_dev[MQTT_JSON_DEV_IDS_TAG] = g_uniq_id;
+   
+   json_packet[MQTT_JSON_NAME_TAG] = "Battery";
+//   json_packet["~"] = "esp32c3/db5";
+//   json_packet[MQTT_JSON_STAT_TOPIC_TAG] = "~/state"; //Must match the mqtt topic in the data packet
+   json_packet[MQTT_JSON_STAT_TOPIC_TAG] = g_mqtt_state_topic; //Must match the mqtt topic in the data packet
+   json_packet[MQTT_JSON_UNIQ_ID_TAG] = g_uniq_id+"-"+MQTT_JSON_VCC_TAG;
+   json_packet[MQTT_JSON_DEVICE_CLASS_TAG] = "voltage";
+   json_packet[MQTT_JSON_MEAS_UNIT_TAG] = "V";
+   json_packet[MQTT_JSON_ICON_TAG] = "mdi:battery";
+   json_packet[MQTT_JSON_VAL_TEMPLATE_TAG] = "{{ value_json."+MQTT_JSON_VCC_TAG+"|default(0) }}";
+   json_packet[MQTT_JSON_FORCE_UPDATE_TAG] = true;
+   json_packet[MQTT_JSON_DEV_TAG] = json_dev;
+
+   sendMQTTMessage(json_packet, mqtt_discovery_topic, wifi_client);
+}
+
+/***************************************************************************
+ * Sends the discovery Message
+ ***************************************************************************/
+void sendMQTTDiscoveryTts(WiFiClient& wifi_client){
+   Serial.println("Sending TTS Discovery Message");
+
+   JSONVar json_packet;
+
+   String mqtt_discovery_topic = String(MQTT_DISCOVERY_PREFIX) + "/sensor/"+String(g_settings.instanceId)+"/"+DISCOVERY_TOPIC_TTS+DISCOVERY_TOPIC_SUFFIX;
+
+   JSONVar json_dev;
+   json_dev[MQTT_JSON_DEV_IDS_TAG] = g_uniq_id;
+   
+   json_packet[MQTT_JSON_NAME_TAG] = "Time To Sleep";
+//   json_packet["~"] = "esp32c3/db5";
+//   json_packet["stat_t"] = "~/state"; //Must match the mqtt topic in the data packet
+   json_packet[MQTT_JSON_STAT_TOPIC_TAG] = g_mqtt_state_topic; //Must match the mqtt topic in the data packet
+   json_packet[MQTT_JSON_UNIQ_ID_TAG] = g_uniq_id+"-"+MQTT_JSON_TTS_TAG;
+//   json_packet["dev_cla"] = "Voltage";
+   json_packet[MQTT_JSON_ICON_TAG] = "mdi:clock-outline";
+   json_packet[MQTT_JSON_MEAS_UNIT_TAG] = "ms";
+   json_packet[MQTT_JSON_VAL_TEMPLATE_TAG] = "{{ value_json."+MQTT_JSON_TTS_TAG+"|default(0) }}";
+   json_packet[MQTT_JSON_FORCE_UPDATE_TAG] = true;
+   json_packet[MQTT_JSON_DEV_TAG] = json_dev;
+   
+   sendMQTTMessage(json_packet, mqtt_discovery_topic, wifi_client);
+}
+
+/***************************************************************************
+ * Sends the discovery Message
+ ***************************************************************************/
+void sendMQTTDiscoveryLsc(WiFiClient& wifi_client){
+   Serial.println("Sending LSC Discovery Message");
+
+   JSONVar json_packet;
+
+   String mqtt_discovery_topic = String(MQTT_DISCOVERY_PREFIX) + "/binary_sensor/"+String(g_settings.instanceId)+"/" + DISCOVERY_TOPIC_LSC + DISCOVERY_TOPIC_SUFFIX;
+
+   JSONVar json_dev;
+   json_dev[MQTT_JSON_DEV_IDS_TAG] = g_uniq_id;
+   
+   json_packet[MQTT_JSON_NAME_TAG] = "Last Connect";
+//   json_packet["~"] = "esp32c3/db5";
+//   json_packet["stat_t"] = "~/state"; //Must match the mqtt topic in the data packet
+   json_packet[MQTT_JSON_STAT_TOPIC_TAG] = g_mqtt_state_topic; //Must match the mqtt topic in the data packet
+   json_packet[MQTT_JSON_UNIQ_ID_TAG] = g_uniq_id+"-"+MQTT_JSON_LSC_TAG;
+//   json_packet["dev_cla"] = "null";
+   json_packet[MQTT_JSON_DEV_TAG] = "connectivity";
+   json_packet[MQTT_JSON_ICON_TAG] = "mdi:connection";
+   json_packet[MQTT_JSON_VAL_TEMPLATE_TAG] = "{{ value_json."+MQTT_JSON_LSC_TAG+" }}";
+   json_packet[MQTT_JSON_FORCE_UPDATE_TAG] = true;
+   json_packet[MQTT_JSON_DEV_TAG] = json_dev;
+   json_packet[MQTT_JSON_PL_ON_TAG] = CONN_MQTT_STATUS_Y;
+   json_packet[MQTT_JSON_PL_OFF_TAG] = CONN_MQTT_STATUS_N;
+   
+   sendMQTTMessage(json_packet, mqtt_discovery_topic, wifi_client);   
+  }
+
+
 
 /***************************************************************************
  * Connects to the MQTT Server 
@@ -1152,6 +1313,8 @@ void sendMQTTMessage(JSONVar& json_packet, String& mqtt_topic, WiFiClient& wifi_
    Serial.print(g_settings.mqttIPAddress);
    Serial.print(" on port ");
    Serial.println(g_settings.mqttPort);
+
+   mqtt_client.setBufferSize(512); 
    
    mqtt_client.setServer(g_settings.mqttIPAddress, g_settings.mqttPort);
 
@@ -1161,13 +1324,14 @@ void sendMQTTMessage(JSONVar& json_packet, String& mqtt_topic, WiFiClient& wifi_
    int mqtt_connection_attempts = (MQTT_CONNECT_TIMEOUT_S * 1000) / MQTT_CONNECT_DELAY_MS;
    int total_mqtt_connection_attempts = mqtt_connection_attempts;
 
-   String client_id = MQTT_CLIENT_ID_PREFIX + String(g_settings.instanceId) + "-" + String(WiFi.macAddress());
-   Serial.printf("%s - Attempting to connect to the mqtt broker with %s/%s (%d attempts).\n", client_id.c_str(), g_settings.mqttUser, g_settings.mqttPassword, mqtt_connection_attempts);
+   //esp32c3-db5-MACADDR
+   
+   Serial.printf("%s - Attempting to connect to the mqtt broker with %s/%s (%d attempts).\n", g_uniq_id.c_str(), g_settings.mqttUser, g_settings.mqttPassword, mqtt_connection_attempts);
    short old_status = MQTT_DISCONNECTED;
    Serial.print(get_readable_mqtt_connection_status(old_status));
    while ((!mqtt_client.connected()) && (0 < mqtt_connection_attempts)) {
             
-      boolean connected = mqtt_client.connect(client_id.c_str(), g_settings.mqttUser, g_settings.mqttPassword);
+      boolean connected = mqtt_client.connect(g_uniq_id.c_str(), g_settings.mqttUser, g_settings.mqttPassword);
       short status_code = mqtt_client.state();
       
       if(old_status == status_code){
@@ -1186,6 +1350,7 @@ void sendMQTTMessage(JSONVar& json_packet, String& mqtt_topic, WiFiClient& wifi_
    if(mqtt_client.connected()){
       Serial.printf("\nConnected after %d attempts \n", (total_mqtt_connection_attempts - mqtt_connection_attempts));
 
+//      bool pub_state = mqtt_client.publish(mqtt_topic.c_str(), JSON.stringify(json_packet).c_str());
       bool pub_state = mqtt_client.publish(mqtt_topic.c_str(), JSON.stringify(json_packet).c_str());
       /**************************************************************************************/
 
@@ -1196,9 +1361,14 @@ void sendMQTTMessage(JSONVar& json_packet, String& mqtt_topic, WiFiClient& wifi_
       }
 
       Serial.print("MQTT Topic:");
-      Serial.println(mqtt_topic.c_str());
+//      Serial.println(mqtt_topic.c_str());
+      Serial.println(mqtt_topic);
       Serial.print("MQTT JSON:");
       Serial.println(JSON.stringify(json_packet).c_str());
+
+      Serial.print("JSON Len:");
+      Serial.println(JSON.stringify(json_packet).length());
+
    } else {
       Serial.printf("\nUnable to connect to MQTT after %d attempts \n", (total_mqtt_connection_attempts - mqtt_connection_attempts));    
    }
@@ -1284,8 +1454,16 @@ void doClient() {
    bool server_connection_status = false;
 
    WiFiClient wifi_client;  // or WiFiClientSecure for HTTPS
-   HTTPClient http;
 
+   if(!isMQTTDiscoverySent()){
+      sendMQTTDiscoveryLights(wifi_client);
+      sendMQTTDiscoveryVcc(wifi_client);
+      sendMQTTDiscoveryTts(wifi_client);
+      sendMQTTDiscoveryLsc(wifi_client);
+      setMQTTDiscoverySent(true);
+   }
+   
+   HTTPClient http;
    String end_point = String(g_settings.instanceId) + "/status";
    
    //char *server_end_point = g_settings.instanceId
@@ -1334,18 +1512,18 @@ void doClient() {
          Serial.println("Parsing input failed!");
       } else {
 
-         if(null != resp_json[JSON_LIGHTS_TAG]){
-            if (0 == strcmp(resp_json[JSON_LIGHTS_TAG], LIGHTS_STATUS_ON)){
+         if(null != resp_json[MQTT_JSON_LIGHTS_TAG]){
+            if (0 == strcmp(resp_json[MQTT_JSON_LIGHTS_TAG], LIGHTS_SERVER_STATUS_ON)){
                Serial.println("Server says lights are on");
                setLights(true); 
-            } else if (0 == strcmp(resp_json[JSON_LIGHTS_TAG], LIGHTS_STATUS_OFF)){
+            } else if (0 == strcmp(resp_json[MQTT_JSON_LIGHTS_TAG], LIGHTS_SERVER_STATUS_OFF)){
                Serial.println("Server says lights are off");
                setLights(false);
             } 
          }
          
-         if(null != resp_json[JSON_TTS_TAG]){
-            time_to_sleep = atoi(resp_json[JSON_TTS_TAG]);
+         if(null != resp_json[MQTT_JSON_TTS_TAG]){
+            time_to_sleep = atoi(resp_json[MQTT_JSON_TTS_TAG]);
             Serial.print("Time To Sleep recevied(ms):");
             Serial.println(time_to_sleep);            
          }
@@ -1378,25 +1556,27 @@ void doClient() {
    JSONVar json_packet;
 
    if(g_light_state){
-      json_packet[JSON_LIGHTS_TAG] = LIGHTS_STATUS_ON;  
+      json_packet[MQTT_JSON_LIGHTS_TAG] = LIGHTS_MQTT_STATUS_ON;  
    } else {
-      json_packet[JSON_LIGHTS_TAG] = LIGHTS_STATUS_OFF;
+      json_packet[MQTT_JSON_LIGHTS_TAG] = LIGHTS_MQTT_STATUS_OFF;
    }
-   json_packet[JSON_VCC_TAG] = vcc;
-   json_packet[JSON_TSS_TAG] = time_to_sleep;
-   json_packet[JSON_LAST_SERVER_CONNECT_TAG] = server_connection_status;
-
-   String mqtt_topic = MQTT_TOPIC_PREFIX + String(g_settings.instanceId);
+   json_packet[MQTT_JSON_VCC_TAG] = String(vcc, 2); 
+   json_packet[MQTT_JSON_TTS_TAG] = time_to_sleep;
 
 
-   sendMQTTMessage(json_packet, mqtt_topic, wifi_client);
+   if(server_connection_status){
+      json_packet[MQTT_JSON_LSC_TAG] = CONN_MQTT_STATUS_Y;    
+   } else {
+      json_packet[MQTT_JSON_LSC_TAG] = CONN_MQTT_STATUS_N;   
+   }
+   
 
+   sendMQTTMessage(json_packet, g_mqtt_state_topic, wifi_client);
 
 //   int sleep_len_ms = 60000;
    Serial.print("Sleeping for(ms):");
    Serial.println(time_to_sleep);
    delay(time_to_sleep);
-
 
 ////   int loop_delay = 60000;
 ////   int loop_delay_ms = 60000;-
