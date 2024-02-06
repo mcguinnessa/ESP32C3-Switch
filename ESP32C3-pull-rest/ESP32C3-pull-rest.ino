@@ -34,22 +34,18 @@ const String HW_VERSION = "esp32c3";
 const String SW_VERSION = "adm-esp32pull-1.2";
 
 //EEPROM Details for non-volatile config
-const int EEPROM_SIZE              = 512;
-const int WIFI_DATA_START_ADDR     = 0;
-const int PIN_DATA_START_ADDR      = 300;
-const int MAX_WIFI_SSID_LENGTH     = 32;
-const int MAX_WIFI_PASSWORD_LENGTH = 63;
-const int HOST_IP_LENGTH           = 32;
+const int EEPROM_SIZE                = 512;
+const int STATE_DATA_START_ADDR      = 0;
+const int CONFIG_DATA_START_ADDR     = 32;
+const int VERSION_LENGTH             = 4;
+const int MAX_WIFI_SSID_LENGTH       = 32;
+const int MAX_WIFI_PASSWORD_LENGTH   = 63;
+const int HOST_IP_LENGTH             = 32;
 //const int SERVER_END_POINT_LENGTH  = 32;
-const int MAX_MQTT_USER_LENGTH     = 12; 
-const int MAX_MQTT_PASSWORD_LENGTH = 32;
+const int MAX_MQTT_USER_LENGTH       = 12; 
+const int MAX_MQTT_PASSWORD_LENGTH   = 32;
 //const int MAX_MQTT_TOPIC_LENGTH    = 32;
-const int MAX_INSTANCE_ID_LENGTH    = 32;
-
-const short RESET_FLAG_BIT     = 0;
-const short DISCOVERY_FLAG_BIT = 1;
-const byte RESET_FLAG_BITMASK     = 0b00000001;
-const byte DISCOVERY_FLAG_BITMASK = 0b00000010;
+const int MAX_INSTANCE_ID_LENGTH     = 32;
 
 const uint16_t MAX_PORT                = 65535;
 const uint16_t MIN_SERVER_PORT         = 80;
@@ -161,7 +157,7 @@ const char* const SET_CONFIG_COMMAND = "/settings";
 /**
  * Set default values for factory reset
  */
-const char* const FR_CFG_VERSION      = "05";
+const char* const FR_CFG_VERSION      = "006";
 const char* const FR_WIFI_SSID        = "wifi-ssid";
 const char* const FR_WIFI_PASS        = "wifipassword";
 const char* const FR_SERVER_IP        = "0.0.0.0";
@@ -217,8 +213,8 @@ const int DEFAULT_SLEEP_PERIOD_MS = 10 * 1000;
 
 //Definition of structure to be stored in memory
 struct storeStruct_t{
-  char myVersion[3];
-  byte isBooleanStates;
+  char myVersion[VERSION_LENGTH];
+//  byte isBooleanStates;
   char ssid[MAX_WIFI_SSID_LENGTH];
   char wifiPassword[MAX_WIFI_PASSWORD_LENGTH];
   char instanceId[MAX_INSTANCE_ID_LENGTH];
@@ -235,11 +231,25 @@ struct storeStruct_t{
 // Create an instance of the server
 WiFiServer server(AP_SERVER_PORT);
 
-bool g_has_been_successful_at_least_once = false;
 const int MAX_FAILURES_ALLOWED_BEFORE_RESET = 10;
+
+
+bool g_has_been_successful_at_least_once = false;
 int g_failures_count = 0;
 
-bool g_light_state = false;
+
+const short RESET_FLAG_BIT     = 0;
+const short LIGHT_FLAG_BIT     = 1;
+const short DISCOVERY_FLAG_BIT = 2;
+const byte RESET_STATE_MASK       = 0b00000000;
+const byte RESET_FLAG_BITMASK     = 0b00000001;
+const byte LIGHT_FLAG_BITMASK     = 0b00000010;
+const byte DISCOVERY_FLAG_BITMASK = 0b00000100;
+
+byte g_state = RESET_STATE_MASK;
+
+
+//bool g_light_state = false;
 short g_mode = SERVER_MODE;
 
 String g_uniq_id = "";
@@ -248,7 +258,7 @@ String g_mqtt_state_topic = "";
 
 storeStruct_t g_settings = {
   *FR_CFG_VERSION,
-  0b00000000,
+//  0b00000000,
   *FR_WIFI_SSID,
   *FR_WIFI_PASS,
   *FR_INSTANCE_ID,
@@ -284,12 +294,22 @@ void setup() {
   }
   Serial.println("Serial Started...");
 
-  loadSettingsData();
-  loadPinState();  
+  loadSettingsDataFromEEPROM();
+  loadStateFromEEPROM();  
+
+  Serial.print("EEPROM Version:");
+  Serial.print(g_settings.myVersion);
+  Serial.print(" SWVersion:");
+  Serial.println(FR_CFG_VERSION);
+  if (0 != strcmp(g_settings.myVersion, FR_CFG_VERSION)){
+    Serial.println("Version Mismatch!");
+    setReset(true);
+  }
+  
 
   //If can't connect to configured network or
   // reset flag is set, go into server mode
-  if((!connectToWiFiNetwork()) || (isReset())){
+  if((isReset()) || (!connectToWiFiNetwork())){
     setupAccessPoint();    
     server.begin();
     g_mode = SERVER_MODE;
@@ -308,12 +328,13 @@ void setup() {
  * Sets the PIN based on the state
  */
 void setLights(bool aState){
-   g_light_state = aState;
+//   g_light_state = aState;
+   setLightsState(aState);
 
    int p1state = LOW;
    int p2state = HIGH;
 
-   if(g_light_state){
+   if(aState){
       p1state = HIGH;
       p2state = LOW;
    }
@@ -330,7 +351,7 @@ void setLights(bool aState){
   digitalWrite(ON_PIN, p1state);
   digitalWrite(OFF_PIN, p2state);
 
-   savePinState();     
+  saveStateToEEPROM();     
 }
 
 /**
@@ -512,31 +533,41 @@ void removeAccessPoint(){
  */
 bool isReset(){
   
-  Serial.print("isReset() - isBooleanStates:");
-  Serial.println(g_settings.isBooleanStates, BIN);
-  return g_settings.isBooleanStates & RESET_FLAG_BITMASK;
+  Serial.print("isReset() - g_state:");
+  Serial.println(g_state, BIN);
+  return g_state & RESET_FLAG_BITMASK;
 }
 
 /**
  * Checks if the MQTT Discovery flag has been set
  */
 bool isMQTTDiscoverySent(){
-  Serial.print("isMQTTDiscoverySent() - isBooleanStates:");
-  Serial.println(g_settings.isBooleanStates, BIN);
-  return g_settings.isBooleanStates & DISCOVERY_FLAG_BITMASK;
+  Serial.print("isMQTTDiscoverySent() - g_state:");
+  Serial.println(g_state, BIN);
+  return g_state & DISCOVERY_FLAG_BITMASK;
 }
+
+/**
+ * Checks if the MQTT Discovery flag has been set
+ */
+bool lightState(){
+  Serial.print("lightState() - g_state:");
+  Serial.println(g_state, BIN);
+  return g_state & LIGHT_FLAG_BITMASK;
+}
+
 
 /**
  * Sets the Factory Reset flag
  */
 void setReset(boolean aReset){
   if(aReset){
-     bitSet(g_settings.isBooleanStates, RESET_FLAG_BIT);
+     bitSet(g_state, RESET_FLAG_BIT);
   } else {
-     bitClear(g_settings.isBooleanStates, RESET_FLAG_BIT);    
+     bitClear(g_state, RESET_FLAG_BIT);    
   }     
-  Serial.print("setReset() - isBooleanStates:");
-  Serial.println(g_settings.isBooleanStates, BIN);
+  Serial.print("setReset() - g_state:");
+  Serial.println(g_state, BIN);
 }
 
 /**
@@ -544,29 +575,61 @@ void setReset(boolean aReset){
  */
 void setMQTTDiscoverySent(boolean aSent){
   if(aSent){
-     bitSet(g_settings.isBooleanStates, DISCOVERY_FLAG_BIT);
+     bitSet(g_state, DISCOVERY_FLAG_BIT);
   } else {
-     bitClear(g_settings.isBooleanStates, DISCOVERY_FLAG_BIT);    
+     bitClear(g_state, DISCOVERY_FLAG_BIT);    
   }
-  Serial.print("setDiscovery() - isBooleanStates:");
-  Serial.println(g_settings.isBooleanStates, BIN);
+  Serial.print("setDiscovery() - g_state:");
+  Serial.println(g_state, BIN);
 }
+
+/**
+ * Sets the Lights flag
+ */
+void setLightsState(boolean aSent){
+  if(aSent){
+     bitSet(g_state, LIGHT_FLAG_BIT);
+  } else {
+     bitClear(g_state, LIGHT_FLAG_BIT);    
+  }
+  Serial.print("setLightsFlag() - g_state:");
+  Serial.println(g_state, BIN);
+}
+
+/**
+ * Sets the Lights flag
+ */
+void zeroAllStates(){
+//  if(aSent){
+//     bitSet(g_state, LIGHT_FLAG_BIT);
+//  } else {
+//     bitClear(g_state, LIGHT_FLAG_BIT);    
+//  }
+
+  g_state = RESET_STATE_MASK;
+  Serial.print("zeroAllStates() - g_state:");
+  Serial.println(g_state, BIN);
+}
+
+
  
 /**
  * Reads in from EEPROM Memory the WIFI settings
  */
-void loadSettingsData(){
+void loadSettingsDataFromEEPROM(){
 
   Serial.println("-----------------------");
   Serial.println("WiFi Config from EEPROM");
   Serial.println("-----------------------");
   storeStruct_t load;
   EEPROM.begin(EEPROM_SIZE);
-  EEPROM.get( WIFI_DATA_START_ADDR, load);
+  EEPROM.get( CONFIG_DATA_START_ADDR, load);
   EEPROM.end();
 
-  Serial.print("isBooleanStates:");
-  Serial.println(load.isBooleanStates, BIN);
+//  Serial.print("isBooleanStates:");
+//  Serial.println(load.isBooleanStates, BIN);
+  Serial.print("Version:");
+  Serial.println(load.myVersion);
   Serial.print("SSID:");
   Serial.println(load.ssid);
   Serial.print("Password:");
@@ -601,13 +664,17 @@ void loadSettingsData(){
 /**
  * Stores the WiFi config in EEPROM
  */
-void saveSettingsData() {
-  
+void saveSettingsDataToEEPROM() {
+
+  strcpy(g_settings.myVersion, FR_CFG_VERSION);
+
   Serial.println("-----------------------");
   Serial.println("Saving WiFi Config to EEPROM.");
   Serial.println("-----------------------");
-  Serial.print("   IS_BOOLEAN_STATES:");
-  Serial.println(g_settings.isBooleanStates, BIN);
+//  Serial.print("   IS_BOOLEAN_STATES:");
+//  Serial.println(g_settings.isBooleanStates, BIN);
+  Serial.print("   Version:");
+  Serial.println(g_settings.myVersion);
   Serial.print("   SSID:");
   Serial.println(g_settings.ssid);
   Serial.print("   PASSWORD:");
@@ -636,38 +703,38 @@ void saveSettingsData() {
   Serial.println("-----------------------");
 
   EEPROM.begin(EEPROM_SIZE);
-  EEPROM.put (WIFI_DATA_START_ADDR, g_settings);
+  EEPROM.put (CONFIG_DATA_START_ADDR, g_settings);
   EEPROM.commit();
   EEPROM.end();
 }
 
 /**
- * Stores PIN State in EEPROM
+ * Stores State State in EEPROM
  */
-void savePinState() {
-  Serial.print("Saving PIN State:");
-  Serial.println(g_light_state);
+void saveStateToEEPROM() {
+  Serial.print("Saving EEPROM State:");
+  Serial.println(g_state, BIN);
 
   EEPROM.begin(EEPROM_SIZE);
-  EEPROM.put (PIN_DATA_START_ADDR, g_light_state);
+  EEPROM.put (STATE_DATA_START_ADDR, g_state);
   EEPROM.commit();
   EEPROM.end();
   Serial.print("size:");
-  Serial.println(sizeof(g_light_state));
+  Serial.println(sizeof(g_state));
 }
 
 /**
  * Stores PIN State in EEPROM
  */
-void loadPinState() {
-  Serial.print("Loading PIN State:");
+void loadStateFromEEPROM() {
+  Serial.print("Loading EEPROM State:");
 
   EEPROM.begin(EEPROM_SIZE);
-  EEPROM.get( PIN_DATA_START_ADDR, g_light_state);
+  EEPROM.get( STATE_DATA_START_ADDR, g_state);
   EEPROM.end();
-  Serial.println(g_light_state);  
+  Serial.println(g_state, BIN);  
   Serial.print("size:");
-  Serial.println(sizeof(g_light_state));
+  Serial.println(sizeof(g_state));
 }
 
 /**
@@ -855,9 +922,10 @@ void showSettingsChangeForm(WiFiClient& aClient){
          "         </ul>\n"
          "         <legend>Instance</legend>\n"
          "           <p>This will be used to generate the following:\n"
-         "           Server end point: <id>/status \n" 
-         "           MQTT Topic      : esp32c3/<id> \n"
-         "           MQTT Client ID  : esp32c3-<id>-MAC-ADDR<id> \n"
+         "           Server end point: /led/id/status \n" 
+         "           MQTT Topic      : esp32c3/id \n"
+         "           MQTT Client ID  : esp32c3-id-MAC-ADDR \n"
+         "           </p>"
          "         <ul>\n"
          "            <li>\n"
          "               <label for=\"instance-id\">ID:</label>"
@@ -1106,11 +1174,14 @@ void handleUpdateSettings(WiFiClient& aClient){
    if (found_ssid && found_password & found_server_ip & found_server_port & //found_server_end_point & 
        found_mqtt_ip & found_mqtt_port & found_mqtt_user & found_mqtt_password & found_instance_id){
 
-      g_settings.isBooleanStates = 0b00000000;
-      Serial.print("Setting isBooleanStates:");  
-      Serial.println(g_settings.isBooleanStates, BIN);  
+//      g_settings.isBooleanStates = 0b00000000;
+      zeroAllStates();
+      saveStateToEEPROM();
+      saveSettingsDataToEEPROM();
+//      Serial.print("Setting isBooleanStates:");  
+//      Serial.println(g_settings.isBooleanStates, BIN);  
       
-      saveSettingsData();
+//      saveSettingsData();
       json[JSON_CONFIG_RESET_TAG] = POST_RESP_SUCCESS;
       success = true;
    }   
@@ -1153,11 +1224,14 @@ void handleUpdateSettings(WiFiClient& aClient){
  ***************************************************************************/
 void factory_reset(){
    Serial.println("Reset recevied, clearing memory");
-   setReset(true);
-   saveSettingsData();
+//   setReset(true);
+//   saveSettingsDataToEEPROM();
 
-   g_light_state = false;
-   savePinState();
+//   g_light_state = false;
+//   savePinState();
+//   resetState();
+    setReset(true);
+    saveStateToEEPROM();
 
    Serial.print("About to restart chip");  
    ESP.restart();
@@ -1555,7 +1629,7 @@ void doClient() {
 
    JSONVar json_packet;
 
-   if(g_light_state){
+   if(lightState()){
       json_packet[MQTT_JSON_LIGHTS_TAG] = LIGHTS_MQTT_STATUS_ON;  
    } else {
       json_packet[MQTT_JSON_LIGHTS_TAG] = LIGHTS_MQTT_STATUS_OFF;
