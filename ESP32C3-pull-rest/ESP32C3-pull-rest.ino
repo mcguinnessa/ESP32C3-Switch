@@ -1626,10 +1626,18 @@ void doClient() {
    
    HTTPClient http;
    String end_point = String(g_settings.instanceId) + "/status";
+//   String end_point = "/status";
+
+//   JSONVar json_body;
+//
+//   JSON_BODY_ID = "id";
+//   json_body[JSON_BODY_ID] = g_settings.instanceId;
+   
    
    //char *server_end_point = g_settings.instanceId
 
    char server_url[MAX_SERVER_URL_LEN];
+//   sprintf(server_url, "http://%s:%d/%s/%s", g_settings.serverIPAddress, g_settings.serverPort, g_settings.serverUrlPrefix, end_point.c_str());
    sprintf(server_url, "http://%s:%d/%s/%s", g_settings.serverIPAddress, g_settings.serverPort, g_settings.serverUrlPrefix, end_point.c_str());
 
    Serial.printf("Sending request to %s\n", server_url);
@@ -1681,12 +1689,17 @@ void doClient() {
                Serial.println("Server says lights are off");
                setLights(false);
             } 
+         } else {
+             Serial.println("No Lights instruction from Server - using OFF");          
+             setLights(false);
          }
          
          if(null != resp_json[MQTT_JSON_TTS_TAG]){
             time_to_sleep = atoi(resp_json[MQTT_JSON_TTS_TAG]);
             Serial.print("Time To Sleep recevied(ms):");
             Serial.println(time_to_sleep);            
+         } else {
+             Serial.println("No TTS instruction from Server - Not changing");          
          }
 
          if(null != resp_json[JSON_RESET_TAG]){
@@ -1697,6 +1710,8 @@ void doClient() {
 //               ESP.restart();
                 factory_reset();
             }
+         } else {
+             Serial.println("No Reset instruction from Server - Not changing");          
          }
 
          if(null != resp_json[JSON_DISCOVERY_TAG]){
@@ -1705,9 +1720,9 @@ void doClient() {
                 //factory_reset();
                 discovery_reset(false);
             }
+         } else {
+             Serial.println("No Discovery instruction from Server - Not changing");          
          }
-
-
       }
     
    }else {
