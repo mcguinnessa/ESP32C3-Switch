@@ -14,16 +14,16 @@ Attempt to connect to wifi given credentials saved in EEPROM.
 Connect to the configured REST API for status information. This is of the form:
 
 #### URL
-<hostname>/<prefix>/status
+`<hostname>/<prefix>/status`
 
 #### Response Message
 JSON
-    {lights: "on|off", tts: integer_in_ms, discovery: "true|false", reset: "true|false"}
+    `{lights: "on|off", tts: integer_in_ms, discovery: "true|false", reset: "true|false"}`
 
-    lights: This will defined the state of the switch, if on it will set the configured PINs to the 'on' state, one high and one low. If off, it will do the reverse.
-    tts: time to sleep, this will determine how long the ESP32 will enter sleep mode for. When in deep sleep this will be limited by the max deep sleep period
-    discover: if this is set to true, then the ESP will send the MQTT discovery messages again.
-    reset: if set to true, the ESP will go into server mode to allow the user to reset the configuration variables.
+- *lights*: This will defined the state of the switch, if on it will set the configured PINs to the 'on' state, one high and one low. If off, it will do the reverse.
+- *tts*: time to sleep, this will determine how long the ESP32 will enter sleep mode for. When in deep sleep this will be limited by the max deep sleep period
+- *discover*: if this is set to true, then the ESP will send the MQTT discovery messages again.
+- *reset*: if set to true, the ESP will go into server mode to allow the user to reset the configuration variables.
 
 ### Perform Instructed Actions
 It will perform any actions instructed via the JSON package. Including changing switch state, re-sending MQTT discovery message, or going into reset mode.
