@@ -42,9 +42,9 @@ Sleep for the instructed time, cuurrently programmatical sleep, which is require
 
 ## Server Mode
 If the initial connection to wifi is unsuccessful, after a given time the ESP will enter server mode. This allows the user to connect to the ESP on
-192.168.1.1/admin/settings
+`192.168.1.1/admin/settings`
 
-and configure the system
+and configure the system.
 
 ### Configuration
 The following parameters can be configured in server mode.
@@ -62,7 +62,12 @@ The following parameters can be configured in server mode.
 
 
 ### TODO:
-Add in mode server response to determine whether the ESP will go to deep sleep, or normal programatical sleep for development purposes.
+- Add in mode server response to determine whether the ESP will go to deep sleep, or normal programatical sleep for development purposes.
+- Read in from analog PIN to get Voltage of power supply of load and write to analog PIN to adjust digital potentiometer 
+  - Further H/W modifications to Analog PIN
+  - Setting a target Voltage in config
+  - Write signal to third analog PIN to adjust potentiometer
+  - (possibly) Move latch PIN from A0 to D7 (not D0, D8 or D9 as they interfer with boot) 
 
 
 The server code for the REST interface can be found here:
