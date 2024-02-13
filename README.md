@@ -1,5 +1,9 @@
-# ESP32C3-Switch
+
 Sketches for ESP32C3 wifi switch
+
+### Requirements
+This was written and tested with the [XIAO_ESP32C3](https://wiki.seeedstudio.com/XIAO_ESP32C3_Getting_Started/]
+with the hardware adjustments made in order to read the VCC status from the A01 pin specified [here](https://wiki.seeedstudio.com/XIAO_ESP32C3_Getting_Started/#check-the-battery-voltage) 
 
 
 # ESP32C3-pull-rest
@@ -62,4 +66,4 @@ Add in mode server response to determine whether the ESP will go to deep sleep, 
 
 
 The server code for the REST interface can be found here:
-https://github.com/mcguinnessa/wifi-led-control-server
+[WiFi Switch REST Server ](https://github.com/mcguinnessa/wifi-led-control-server)
