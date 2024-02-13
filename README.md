@@ -9,10 +9,11 @@ This sketch will do the following:
 
 Attempt to connect to wifi given saved credentials.
 
-  Connect to the configured REST API for status information. This is of the form 
-  <hostname>/<prefix>/status
+Connect to the configured REST API for status information. This is of the form 
+<hostname>/<prefix>/status
 
-  return JSON
+###Server Response Message
+JSON
     {lights: "on|off", tts: integer_in_ms, discovery: "true|false", reset: "true|false"}
 
     lights: This will defined the state of the switch, if on it will set the configured PINs to the 'on' state, one high and one low. If off, it will do the reverse.
@@ -30,15 +31,28 @@ Attempt to connect to wifi given saved credentials.
   Sleep for the instructed time.
 
 If the initial connection to wifi is unsuccessful, after a given time the ESP will enter server mode. This allows the user to connect to the ESP on
-192.168.1.1/settings
+192.168.1.1/admin/settings
 
 and configure the system
 
 
-#Configuration
+###Configuration
+Wifi SSID
+Wifi Password
+Instance ID (used to identify the instance to the REST server and MQTT messages)
+REST Server IP/Hostname - The server which will determine the state of the switch
+REST Server Port
+REST Server URL prefix - this is prefixed to the REST API in case any routing is needed at the server end (useful for K8s ingress routing)
+MQTT IP/Hostname - the MQTT broker address
+MQTT Port
+MQTT Password
+MQTT Discovery prefix - for instance homeassistant for the Home Assistant broker
+MQTT Display name - the human friendly name to be dsplayed for the instance in the discovery message.
+
   
 
-TODO:
+
+###TODO:
 
 
 The server code for the REST interface can be found here:
