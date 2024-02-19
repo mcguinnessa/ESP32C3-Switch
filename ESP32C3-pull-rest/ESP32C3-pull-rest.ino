@@ -129,7 +129,7 @@ const String MQTT_JSON_PL_OFF_TAG = "pl_off";
 
 //HTTP
 //const int WIFI_WEB_PAGE_SIZE = 2944;
-const int WIFI_WEB_PAGE_SIZE = 3550;
+const int WIFI_WEB_PAGE_SIZE = 3778;
 const int JSON_RESPONSE_SIZE = 384;
 const int MAX_SERVER_URL_LEN = 48;
 const char* const HTTP_VERSION = "HTTP/1.1";
@@ -758,6 +758,26 @@ void loadStateFromEEPROM() {
 }
 
 /**
+ * replaces characters in a string
+ */
+char * replace(char * aInput, char aFind, char aReplaced) 
+{
+
+    char * output = (char*)malloc(strlen(aInput));
+
+    for (int i = 0; i < strlen(aInput); i++)
+    {
+        if (aInput[i] == aFind) output[i] = aReplaced;
+        else output[i] = aInput[i];
+    }
+
+    output[strlen(aInput)] = '\0';
+
+    return output;
+
+}
+
+/**
  * Splits a string into an array
  */
 void split(char* aString, const char *aSeparator, char *aArray[], const int aMax){
@@ -927,7 +947,10 @@ void showSettingsChangeForm(WiFiClient& aClient){
          "   </style>\n"
          "</head>\n"
          "<body>\n"
-         "   <form id=\"contact-form\" action=\"%s\" method=\"post\">\n"
+         "   <form id=\"contact-form\" action=\"%s\" method=\"post\" "
+         "         enctype=\"application/x-www-form-urlencoded\" >\n"
+//         "         enctype=\"multipart/form-data\" >\n"
+//         "         enctype=\"text/plain\" >\n"
          "      <fieldset>\n"
          "         <legend>Configuration</legend>\n"
          "         <ul>\n"
@@ -941,10 +964,10 @@ void showSettingsChangeForm(WiFiClient& aClient){
          "            </li>\n"
          "         </ul>\n"
          "         <legend>Instance</legend>\n"
-         "           <p>This will be used to generate the following:\n"
-         "           Server end point: /led/id/status \n" 
-         "           MQTT Topic      : esp32c3/id \n"
-         "           MQTT Client ID  : esp32c3-id-MAC-ADDR \n"
+         "           <p>This will be used to generate the following:<br>"
+         "           Server end point: &lt;prefix&gt;/&lt;id&gt;/&lt;status&gt;<br>" 
+         "           MQTT Topic      : &lt;prefix&gt;/&lt;id&gt;<br>"
+         "           MQTT Client ID  : esp32c3-id-MAC-ADDR<br>"
          "           </p>"
          "         <ul>\n"
          "            <li>\n"
@@ -964,7 +987,7 @@ void showSettingsChangeForm(WiFiClient& aClient){
          "            </li>\n"
          "            <li>\n"
          "               <label for=\"server-url-prefix\">Server Url Prefix:</label>"
-         "               <input type=\"text\" id=\"%s\" name=\"%s\" value=\"%d\" />\n"
+         "               <input type=\"text\" id=\"%s\" name=\"%s\" value=\"%s\" />\n"
          "            </li>\n"
          "         </ul>\n"
          "         <legend>MQTT Configuration</legend>\n"
@@ -1068,9 +1091,12 @@ void handleUpdateSettings(WiFiClient& aClient){
        ++body_p;
    }
 
+   //Replace URL encoded + to be a single space
+   char* spaced_body = replace(body_p, '+', ' ');
+
    //This decodes the special characters like @ etc which are encoded as %40 (URL Decoding)
-   char decoded_str[percent::decodeLength(body_p)];
-   percent::decode(body_p, decoded_str);
+   char decoded_str[percent::decodeLength(spaced_body)];
+   percent::decode(spaced_body, decoded_str);
    Serial.print("URL Decoded Output:");
    Serial.println(decoded_str);
    
@@ -1290,11 +1316,13 @@ void handleUpdateSettings(WiFiClient& aClient){
    // Send the response to the client
    aClient.flush();
    aClient.print(response);
+   aClient.flush();
 
    if(success){
-      removeAccessPoint();
       
-      delay(10);       
+      delay(100);       
+      removeAccessPoint();
+      delay(100);       
       Serial.println("About to restart chip");  
       ESP.restart();
    }
@@ -1362,7 +1390,7 @@ void sendMQTTDiscoveryLights(WiFiClient& wifi_client){
 
    JSONVar json_dev;
    json_dev[MQTT_JSON_DEV_IDS_TAG] = g_uniq_id;
-   json_dev[MQTT_JSON_DEV_NAME_TAG] = MQTT_DISPLAY_NAME;
+   json_dev[MQTT_JSON_DEV_NAME_TAG] = g_settings.mqttDisplayName;
    json_dev[MQTT_JSON_DEV_HW_TAG] = HW_VERSION;
    json_dev[MQTT_JSON_DEV_SW_TAG] = SW_VERSION;
    
@@ -1463,8 +1491,8 @@ void sendMQTTDiscoveryLsc(WiFiClient& wifi_client){
    json_packet[MQTT_JSON_VAL_TEMPLATE_TAG] = "{{ value_json."+MQTT_JSON_LSC_TAG+" }}";
    json_packet[MQTT_JSON_FORCE_UPDATE_TAG] = true;
    json_packet[MQTT_JSON_DEV_TAG] = json_dev;
-   json_packet[MQTT_JSON_PL_ON_TAG] = CONN_MQTT_STATUS_Y;
-   json_packet[MQTT_JSON_PL_OFF_TAG] = CONN_MQTT_STATUS_N;
+//   json_packet[MQTT_JSON_PL_ON_TAG] = CONN_MQTT_STATUS_Y;
+//   json_packet[MQTT_JSON_PL_OFF_TAG] = CONN_MQTT_STATUS_N;
    
    sendMQTTMessage(json_packet, mqtt_discovery_topic, wifi_client);   
   }
