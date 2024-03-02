@@ -50,6 +50,8 @@ const int MAX_INSTANCE_ID_LENGTH     = 32;
 const int MAX_MQTT_DISPLAY_NAME_LENGTH   = 32;
 const int MAX_MQTT_DISC_PREFIX_LENGTH    = 32;
 
+const int SEND_MQTT_DISCOVERY_EVERY_ITERATIONS = 10;
+
 const uint16_t MAX_PORT                = 65535;
 const uint16_t MIN_SERVER_PORT         = 80;
 const uint16_t MIN_MQTT_PORT           = 1023;
@@ -101,10 +103,15 @@ const char* const JSON_RESET_TAG = "reset";
 const char* const RESET_STATUS_TRUE = "true";
 const char* const JSON_DISCOVERY_TAG = "discovery";
 const char* const DISCOVERY_STATUS_TRUE = "true";
+const char* const JSON_SEQID_TAG = "seqid";
+const char* const MODE_TAG = "mode";
+const char* const MODE_DEEP = "deep";
+const char* const MODE_PROG = "prog";
 const String MQTT_JSON_LIGHTS_TAG = "lights";
 const String MQTT_JSON_TTS_TAG = "tts";
 const String MQTT_JSON_VCC_TAG = "vcc";
 const String MQTT_JSON_LSC_TAG = "lsc";
+const String MQTT_JSON_MODE_TAG = "md";
 const char* const JSON_CONFIG_RESET_TAG = "reset-config";
 const char* const JSON_ERROR_TAG = "error";
 const char* const POST_RESP_FAILURE = "Failure";
@@ -193,7 +200,8 @@ const String DISCOVERY_TOPIC_TTS = "tts";
 const String DISCOVERY_TOPIC_VCC = "vcc"; 
 const String DISCOVERY_TOPIC_LIGHTS = "lights"; 
 const String DISCOVERY_TOPIC_LSC = "lsc";
- 
+const String DISCOVERY_TOPIC_MODE = "mode";
+
 /**
  * Define AP WIFI Details
  */
@@ -253,10 +261,12 @@ int g_failures_count = 0;
 const short RESET_FLAG_BIT     = 0;
 const short LIGHT_FLAG_BIT     = 1;
 const short DISCOVERY_FLAG_BIT = 2;
+const short DEEPSLEEP_FLAG_BIT = 3;
 const byte RESET_STATE_MASK       = 0b00000000;
 const byte RESET_FLAG_BITMASK     = 0b00000001;
 const byte LIGHT_FLAG_BITMASK     = 0b00000010;
 const byte DISCOVERY_FLAG_BITMASK = 0b00000100;
+const byte DEEPSLEEP_FLAG_BITMASK = 0b00001000;
 
 byte g_state = RESET_STATE_MASK;
 
@@ -549,6 +559,18 @@ bool isReset(){
 }
 
 /**
+ * Checks if the Factory Reset flag has been set
+ */
+bool isDeepSleepMode(){
+  
+  Serial.print("isDeepSleepMode() - g_state:");
+  Serial.println(g_state, BIN);
+  return g_state & DEEPSLEEP_FLAG_BITMASK;
+}
+
+
+
+/**
  * Checks if the MQTT Discovery flag has been set
  */
 bool isMQTTDiscoverySent(){
@@ -588,9 +610,23 @@ void setMQTTDiscoverySent(boolean aSent){
   } else {
      bitClear(g_state, DISCOVERY_FLAG_BIT);    
   }
-  Serial.print("setDiscovery() - g_state:");
+  Serial.print("setMQTTDiscoverySent() - g_state:");
   Serial.println(g_state, BIN);
 }
+
+/**
+ * Sets the MQTT Discovery flag
+ */
+void setDeepSleepMode(boolean aDeepSleep){
+  if(aDeepSleep){
+     bitSet(g_state, DEEPSLEEP_FLAG_BIT);
+  } else {
+     bitClear(g_state, DEEPSLEEP_FLAG_BIT);    
+  }
+  Serial.print("setDeepSleepMode() - g_state:");
+  Serial.println(g_state, BIN);
+}
+
 
 /**
  * Sets the Lights flag
@@ -1360,6 +1396,20 @@ void discovery_reset(bool aFlag){
 //   ESP.restart();
 }
 
+/***************************************************************************
+ * Sets the flag to deep sleep mode
+ ***************************************************************************/
+void set_deep_sleep_mode(bool aFlag){
+   Serial.print("Deep Sleep Mode Flag:");
+   Serial.println(aFlag);
+//    setReset(true);
+
+    setDeepSleepMode(aFlag);
+    saveStateToEEPROM();
+
+//   Serial.print("About to restart chip");  
+//   ESP.restart();
+}
 
 /**
  * Gets the battery voltage - will only work if the voltage divider has been 
@@ -1491,11 +1541,39 @@ void sendMQTTDiscoveryLsc(WiFiClient& wifi_client){
    json_packet[MQTT_JSON_VAL_TEMPLATE_TAG] = "{{ value_json."+MQTT_JSON_LSC_TAG+" }}";
    json_packet[MQTT_JSON_FORCE_UPDATE_TAG] = true;
    json_packet[MQTT_JSON_DEV_TAG] = json_dev;
-//   json_packet[MQTT_JSON_PL_ON_TAG] = CONN_MQTT_STATUS_Y;
-//   json_packet[MQTT_JSON_PL_OFF_TAG] = CONN_MQTT_STATUS_N;
+   json_packet[MQTT_JSON_PL_ON_TAG] = CONN_MQTT_STATUS_Y;
+   json_packet[MQTT_JSON_PL_OFF_TAG] = CONN_MQTT_STATUS_N;
    
    sendMQTTMessage(json_packet, mqtt_discovery_topic, wifi_client);   
   }
+
+/***************************************************************************
+ * Sends the discovery Message
+ ***************************************************************************/
+void sendMQTTDiscoveryMode(WiFiClient& wifi_client){
+   Serial.println("Sending Mode Discovery Message");
+
+   JSONVar json_packet;
+
+   String mqtt_discovery_topic = String(g_settings.mqttDiscoveryPrefix) + "/sensor/"+String(g_settings.instanceId)+"/"+DISCOVERY_TOPIC_MODE+DISCOVERY_TOPIC_SUFFIX;
+
+   JSONVar json_dev;
+   json_dev[MQTT_JSON_DEV_IDS_TAG] = g_uniq_id;
+   
+   json_packet[MQTT_JSON_NAME_TAG] = "Sleep Mode";
+//   json_packet["~"] = "esp32c3/db5";
+//   json_packet["stat_t"] = "~/state"; //Must match the mqtt topic in the data packet
+   json_packet[MQTT_JSON_STAT_TOPIC_TAG] = g_mqtt_state_topic; //Must match the mqtt topic in the data packet
+   json_packet[MQTT_JSON_UNIQ_ID_TAG] = g_uniq_id+"-"+MQTT_JSON_MODE_TAG;
+//   json_packet["dev_cla"] = "Voltage";
+//   json_packet[MQTT_JSON_ICON_TAG] = "mdi:clock-outline";
+//   json_packet[MQTT_JSON_MEAS_UNIT_TAG] = "ms";
+   json_packet[MQTT_JSON_VAL_TEMPLATE_TAG] = "{{ value_json."+MQTT_JSON_MODE_TAG+"|default(0) }}";
+   json_packet[MQTT_JSON_FORCE_UPDATE_TAG] = true;
+   json_packet[MQTT_JSON_DEV_TAG] = json_dev;
+   
+   sendMQTTMessage(json_packet, mqtt_discovery_topic, wifi_client);
+}
 
 
 
@@ -1649,8 +1727,11 @@ void doClient() {
    float vcc = getVCC();
    int time_to_sleep = DEFAULT_SLEEP_PERIOD_MS;
    bool server_connection_status = false;
+   int seqid = 0;
 
    WiFiClient wifi_client;  // or WiFiClientSecure for HTTPS
+
+   char *sleep_mode_text;
    
    HTTPClient http;
    String end_point = String(g_settings.instanceId) + "/status";
@@ -1685,11 +1766,15 @@ void doClient() {
       factory_reset();
    }
 
+   JSONVar json_packet;
+   json_packet[MQTT_JSON_LSC_TAG] = CONN_MQTT_STATUS_N;    
+
    if(resp_code == 200) {
       g_has_been_successful_at_least_once = true;
       g_failures_count = 0;
       server_connection_status = true;
       // Print the response
+      json_packet[MQTT_JSON_LSC_TAG] = CONN_MQTT_STATUS_Y;    
 
       String http_response = http.getString();
       Serial.print("Response:");
@@ -1712,9 +1797,11 @@ void doClient() {
          if(null != resp_json[MQTT_JSON_LIGHTS_TAG]){
             if (0 == strcmp(resp_json[MQTT_JSON_LIGHTS_TAG], LIGHTS_SERVER_STATUS_ON)){
                Serial.println("Server says lights are on");
+               json_packet[MQTT_JSON_LIGHTS_TAG] = LIGHTS_MQTT_STATUS_ON;  
                setLights(true); 
             } else if (0 == strcmp(resp_json[MQTT_JSON_LIGHTS_TAG], LIGHTS_SERVER_STATUS_OFF)){
                Serial.println("Server says lights are off");
+               json_packet[MQTT_JSON_LIGHTS_TAG] = LIGHTS_MQTT_STATUS_OFF;  
                setLights(false);
             } 
          } else {
@@ -1725,6 +1812,7 @@ void doClient() {
          if(null != resp_json[MQTT_JSON_TTS_TAG]){
             time_to_sleep = atoi(resp_json[MQTT_JSON_TTS_TAG]);
             Serial.print("Time To Sleep recevied(ms):");
+            json_packet[MQTT_JSON_TTS_TAG]  = time_to_sleep;
             Serial.println(time_to_sleep);            
          } else {
              Serial.println("No TTS instruction from Server - Not changing");          
@@ -1751,6 +1839,29 @@ void doClient() {
          } else {
              Serial.println("No Discovery instruction from Server - Not changing");          
          }
+
+         if(null != resp_json[JSON_SEQID_TAG]){
+            seqid = atoi(resp_json[JSON_SEQID_TAG]);
+            Serial.print("Sequence ID recevied(ms):");
+            Serial.println(seqid);            
+         } else {
+             Serial.println("No Sequence ID from Server");          
+         }
+
+         if(null != resp_json[MODE_TAG]){
+            if(0 == strcmp(resp_json[MODE_TAG], MODE_DEEP)){
+               Serial.println("Deep Sleep Mode");
+                //factory_reset();
+                json_packet[MQTT_JSON_MODE_TAG] = MODE_DEEP;
+                set_deep_sleep_mode(true);
+            } else { //Anything else
+                json_packet[MQTT_JSON_MODE_TAG] = MODE_PROG;
+                set_deep_sleep_mode(false);              
+            }
+         } else {
+             Serial.println("No Mode instruction from Server - Setting to programattical sleep");          
+             set_deep_sleep_mode(false);              
+         }
       }
     
    }else {
@@ -1766,39 +1877,48 @@ void doClient() {
       factory_reset();    
    }
 
-   JSONVar json_packet;
 
-   if(lightState()){
-      json_packet[MQTT_JSON_LIGHTS_TAG] = LIGHTS_MQTT_STATUS_ON;  
-   } else {
-      json_packet[MQTT_JSON_LIGHTS_TAG] = LIGHTS_MQTT_STATUS_OFF;
-   }
-   json_packet[MQTT_JSON_VCC_TAG] = String(vcc, 2); 
-   json_packet[MQTT_JSON_TTS_TAG] = time_to_sleep;
+//   if(lightState()){
+//      json_packet[MQTT_JSON_LIGHTS_TAG] = LIGHTS_MQTT_STATUS_ON;  
+//   } else {
+//      json_packet[MQTT_JSON_LIGHTS_TAG] = LIGHTS_MQTT_STATUS_OFF;
+//   }
+   json_packet[MQTT_JSON_VCC_TAG]  = String(vcc, 2); 
 
 
-   if(server_connection_status){
-      json_packet[MQTT_JSON_LSC_TAG] = CONN_MQTT_STATUS_Y;    
-   } else {
-      json_packet[MQTT_JSON_LSC_TAG] = CONN_MQTT_STATUS_N;   
-   }
+//   if(server_connection_status){
+//      json_packet[MQTT_JSON_LSC_TAG] = CONN_MQTT_STATUS_Y;    
+//   } else {
+//      json_packet[MQTT_JSON_LSC_TAG] = CONN_MQTT_STATUS_N;   
+//   }
 
-   if(!isMQTTDiscoverySent()){
+
+//   if (0 == (seqid % SEND_MQTT_DISCOVERY_EVERY_ITERATIONS))
+
+   if(!isMQTTDiscoverySent() || (0 == (seqid % SEND_MQTT_DISCOVERY_EVERY_ITERATIONS))){
       sendMQTTDiscoveryLights(wifi_client);
       sendMQTTDiscoveryVcc(wifi_client);
       sendMQTTDiscoveryTts(wifi_client);
       sendMQTTDiscoveryLsc(wifi_client);
+      sendMQTTDiscoveryMode(wifi_client);
 //      setMQTTDiscoverySent(true);
       discovery_reset(true);
    }
 
-
    sendMQTTMessage(json_packet, g_mqtt_state_topic, wifi_client);
 
 //   int sleep_len_ms = 60000;
-   Serial.print("Sleeping for(ms):");
-   Serial.println(time_to_sleep);
-   delay(time_to_sleep);
+
+
+   if(isDeepSleepMode()){
+      Serial.print("Deep Sleeping for(ms):");
+      Serial.println(time_to_sleep);
+      delay(time_to_sleep);    
+   } else {
+      Serial.print("Programattical Sleeping for(ms):");
+      Serial.println(time_to_sleep);
+      delay(time_to_sleep);    
+   }
 
 ////   int loop_delay = 60000;
 ////   int loop_delay_ms = 60000;-
