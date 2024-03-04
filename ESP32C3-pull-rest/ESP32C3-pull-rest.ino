@@ -30,8 +30,30 @@
 bool FORCE_RESET = false;
 /*****************************************************************************/
 
+/*****************************************************************************
+* These are expected to be configurable.
+* 
+******************************************************************************/
 const String HW_VERSION = "esp32c3";
-const String SW_VERSION = "adm-esp32pull-1.2";
+const String SW_VERSION = "adm-esp32pull-1.23";
+
+// define PINs according to pin diagram
+const int ON_PIN = D10;
+const int OFF_PIN = D1;
+const int VCC_PIN = A0;
+
+const uint16_t MIN_SERVER_PORT         = 80;
+const uint16_t MIN_MQTT_PORT           = 1023;
+
+//Server Connection
+const int WIFI_CLIENT_READ_TIMEOUT_MS = 5000;
+const int SERVER_READ_TIMEOUT_MS = 500; 
+
+//MQTT Connection
+const uint16_t MQTT_CONNECT_TIMEOUT_S = 5;
+const uint16_t MQTT_CONNECT_DELAY_MS = 100;
+
+/*****************************************************************************/
 
 //EEPROM Details for non-volatile config
 const int EEPROM_SIZE                = 512;
@@ -42,7 +64,6 @@ const int MAX_WIFI_SSID_LENGTH       = 32;
 const int MAX_WIFI_PASSWORD_LENGTH   = 63;
 const int HOST_IP_LENGTH             = 32;
 const int MAX_SERVER_URL_PREFIX_LENGTH   = 8;
-//const int SERVER_END_POINT_LENGTH  = 32;
 const int MAX_MQTT_USER_LENGTH       = 12; 
 const int MAX_MQTT_PASSWORD_LENGTH   = 32;
 //const int MAX_MQTT_TOPIC_LENGTH    = 32;
@@ -52,12 +73,6 @@ const int MAX_MQTT_DISC_PREFIX_LENGTH    = 32;
 
 const int SEND_MQTT_DISCOVERY_EVERY_ITERATIONS = 10;
 
-const uint16_t MAX_PORT                = 65535;
-const uint16_t MIN_SERVER_PORT         = 80;
-const uint16_t MIN_MQTT_PORT           = 1023;
-
-const int WIFI_CLIENT_READ_TIMEOUT_MS = 5000;
-const int SERVER_READ_TIMEOUT_MS = 500; 
 
 const int AP_SERVER_PORT = 80;
 const int CONNECT_TIMEOUT_MS  = 30000;  //How long it should take to connect
@@ -68,18 +83,12 @@ const char* const REST_PUT          ="PUT";
 const char* const REST_POST         ="POST";
 const char* const REST_GET          ="GET";
 const char* const ADMIN_COMMAND     ="admin";
-//const char* const LIGHTS_COMMAND    ="lights";
-//const char* const LIGHTS_ON         ="on";
-//const char* const LIGHTS_OFF        ="off";
 const char* const LIGHTS_STATUS     ="status";
-//const char* const VCC               ="vcc";
-//const char* const WIFI              ="wifi";
 const char* const SETTINGS          ="settings";
 
 /* Config Parameters */
 const char* const WIFI_SSID             ="ssid";
 const char* const WIFI_PASSWORD         ="wifi-password";
-//const char* const SERVER_URL_PREFIX     = "led";               //TODO
 const char* const SERVER_IP             = "server-ip"; 
 const char* const SERVER_PORT           = "server-port"; 
 const char* const SERVER_URL_PREFIX     = "server-url-prefix"; 
@@ -92,7 +101,6 @@ const char* const MQTT_DISPLAY_NAME     = "mqtt-display-name";
 const char* const MQTT_DISCOVERY_PREFIX = "mqtt-disc-prefix";      
 
 //JSON Defs
-//const char* const LIGHTS_STATUS_UNKNOWN = "unknown";
 const char* const LIGHTS_SERVER_STATUS_ON = "on";
 const char* const LIGHTS_SERVER_STATUS_OFF = "off";
 const char* const LIGHTS_MQTT_STATUS_ON = "on";
@@ -135,7 +143,6 @@ const String MQTT_JSON_PL_OFF_TAG = "pl_off";
 
 
 //HTTP
-//const int WIFI_WEB_PAGE_SIZE = 2944;
 const int WIFI_WEB_PAGE_SIZE = 3778;
 const int JSON_RESPONSE_SIZE = 384;
 const int MAX_SERVER_URL_LEN = 48;
@@ -158,14 +165,13 @@ const char* const JSON_ERROR_BAD_MQTT_IP_LEN               = "Invalid MQTT IP le
 const char* const JSON_ERROR_BAD_MQTT_PORT_LEN             = "Invalid MQTT Port length";
 const char* const JSON_ERROR_BAD_MQTT_USER_LEN             = "Invalid MQTT User length";
 const char* const JSON_ERROR_BAD_MQTT_PASSWORD_LEN         = "Invalid MQTT Password length";
-//const char* const JSON_ERROR_BAD_MQTT_TOPIC_LEN          = "Invalid MQTT Port length";
 const char* const JSON_ERROR_BAD_INSTANCE_ID_LEN           = "Invalid Instance ID length";
 const char* const JSON_ERROR_BAD_MQTT_DISCOVERY_PREFIX_LEN = "Invalid Discovery Prefix length";
 const char* const JSON_ERROR_BAD_MQTT_DISPLAY_NAME_LEN     = "Invalid Display Name length";
+const uint16_t MAX_PORT                = 65535;
 
 const char* const SET_CONFIG_URL = "/admin/settings";
 const char* const SET_CONFIG_COMMAND = "/settings";
-//const char* const SET_CONFIG_COMMAND = "/" + SETTINGS;
 
 
 /**
@@ -177,25 +183,17 @@ const char* const FR_WIFI_PASS          = "wifipassword";
 const char* const FR_SERVER_IP          = "0.0.0.0";
 const unsigned int FR_SERVER_PORT       = (short)0;
 const char* const FR_SERVER_URL_PREFIX  = "prefix";
-//const char* const FR_SERVER_END_POINT = "server-end-point";
 const char* const FR_MQTT_IP            = "0.0.0.0";
 const unsigned int FR_MQTT_PORT         = (short)0;
 const char* const FR_MQTT_USER          = "mqtt";
 const char* const FR_MQTT_PASSWORD      = "mqttpass";
-//const char* const FR_MQTT_TOPIC       = "/mqtt/topic";
 const char* const FR_INSTANCE_ID        = "id-esp32c3"; 
 const char* const FR_DISCOVERY_PREFIX   = "homeassistant"; 
 const char* const FR_DISPLAY_NAME       = "Display Name"; 
 
-const uint16_t MQTT_CONNECT_TIMEOUT_S = 5;
-const uint16_t MQTT_CONNECT_DELAY_MS = 100;
-
-//const char* const MQTT_CLIENT_ID_PREFIX = "esp32c3-";
-//const char* const MQTT_TOPIC_PREFIX     = "esp32c3/";
 
 const char* const DISCOVERY_TOPIC_SUFFIX= "/config";
 const char* const MQTT_TOPIC_SUFFIX = "/state";
-//const char* const DISCOVERY_TOPIC_TEMPLATE = "homeassistant/sensor/db5/%s/config";
 const String DISCOVERY_TOPIC_TTS = "tts"; 
 const String DISCOVERY_TOPIC_VCC = "vcc"; 
 const String DISCOVERY_TOPIC_LIGHTS = "lights"; 
@@ -216,10 +214,6 @@ const IPAddress AP_SUBNET(255,255,255,0);
 const short SERVER_MODE = 1;
 const short CLIENT_MODE = 2;
  
-// define PINs according to pin diagram
-int ON_PIN = D10;
-int OFF_PIN = D1;
-int VCC_PIN = A0;
 
 //These are for the wait for serial
 const int TIME_TO_WAIT_FOR_SERIAL_MS = 2000;
@@ -239,7 +233,6 @@ struct storeStruct_t{
   char serverIPAddress[HOST_IP_LENGTH];
   uint16_t serverPort;
   char serverUrlPrefix[MAX_SERVER_URL_PREFIX_LENGTH];
-//  char serverEndPoint[SERVER_END_POINT_LENGTH];
   char mqttIPAddress[HOST_IP_LENGTH];
   uint16_t mqttPort;
   char mqttUser[MAX_MQTT_USER_LENGTH];
@@ -291,7 +284,6 @@ storeStruct_t g_settings = {
   *FR_MQTT_PASSWORD,
   *FR_DISCOVERY_PREFIX,
   *FR_DISPLAY_NAME
-//  *FR_MQTT_TOPIC  
 };
 
 
@@ -553,8 +545,8 @@ void removeAccessPoint(){
  */
 bool isReset(){
   
-  Serial.print("isReset() - g_state:");
-  Serial.println(g_state, BIN);
+  Serial.print("isReset() - ");
+  Serial.println(g_state & RESET_FLAG_BITMASK, BIN);
   return g_state & RESET_FLAG_BITMASK;
 }
 
@@ -563,19 +555,23 @@ bool isReset(){
  */
 bool isDeepSleepMode(){
   
-  Serial.print("isDeepSleepMode() - g_state:");
-  Serial.println(g_state, BIN);
+  Serial.print("isDeepSleepMode() - ");
+//  Serial.print(g_state, BIN);
+//  Serial.pr+int(" | ");
+//  Serial.println(DEEPSLEEP_FLAG_BITMASK, BIN);
+  Serial.println(g_state & DEEPSLEEP_FLAG_BITMASK, BIN);
+//  Serial.println(g_state, BIN);
   return g_state & DEEPSLEEP_FLAG_BITMASK;
 }
-
 
 
 /**
  * Checks if the MQTT Discovery flag has been set
  */
 bool isMQTTDiscoverySent(){
-  Serial.print("isMQTTDiscoverySent() - g_state:");
-  Serial.println(g_state, BIN);
+  Serial.print("isMQTTDiscoverySent() - ");
+//  Serial.println(g_state, BIN);
+  Serial.println(g_state & DISCOVERY_FLAG_BITMASK, BIN);
   return g_state & DISCOVERY_FLAG_BITMASK;
 }
 
@@ -583,8 +579,8 @@ bool isMQTTDiscoverySent(){
  * Checks if the MQTT Discovery flag has been set
  */
 bool lightState(){
-  Serial.print("lightState() - g_state:");
-  Serial.println(g_state, BIN);
+  Serial.print("lightState() - ");
+  Serial.println(g_state & LIGHT_FLAG_BITMASK, BIN);
   return g_state & LIGHT_FLAG_BITMASK;
 }
 
@@ -597,8 +593,8 @@ void setReset(boolean aReset){
   } else {
      bitClear(g_state, RESET_FLAG_BIT);    
   }     
-  Serial.print("setReset() - g_state:");
-  Serial.println(g_state, BIN);
+  Serial.print("setReset() - ");
+  Serial.println(g_state & RESET_FLAG_BITMASK, BIN);
 }
 
 /**
@@ -610,8 +606,8 @@ void setMQTTDiscoverySent(boolean aSent){
   } else {
      bitClear(g_state, DISCOVERY_FLAG_BIT);    
   }
-  Serial.print("setMQTTDiscoverySent() - g_state:");
-  Serial.println(g_state, BIN);
+  Serial.print("setMQTTDiscoverySent() - ");
+  Serial.println(g_state & DISCOVERY_FLAG_BITMASK, BIN);
 }
 
 /**
@@ -624,9 +620,8 @@ void setDeepSleepMode(boolean aDeepSleep){
      bitClear(g_state, DEEPSLEEP_FLAG_BIT);    
   }
   Serial.print("setDeepSleepMode() - g_state:");
-  Serial.println(g_state, BIN);
+  Serial.println(g_state & DEEPSLEEP_FLAG_BITMASK, BIN);
 }
-
 
 /**
  * Sets the Lights flag
@@ -637,19 +632,15 @@ void setLightsState(boolean aSent){
   } else {
      bitClear(g_state, LIGHT_FLAG_BIT);    
   }
-  Serial.print("setLightsFlag() - g_state:");
-  Serial.println(g_state, BIN);
+  Serial.print("setLightsFlag() - ");
+  Serial.println(g_state & LIGHT_FLAG_BITMASK, BIN);
+//  Serial.println(g_state, BIN);
 }
 
 /**
  * Sets the Lights flag
  */
 void zeroAllStates(){
-//  if(aSent){
-//     bitSet(g_state, LIGHT_FLAG_BIT);
-//  } else {
-//     bitClear(g_state, LIGHT_FLAG_BIT);    
-//  }
 
   g_state = RESET_STATE_MASK;
   Serial.print("zeroAllStates() - g_state:");
@@ -669,8 +660,6 @@ void loadSettingsDataFromEEPROM(){
   EEPROM.get( CONFIG_DATA_START_ADDR, load);
   EEPROM.end();
 
-//  Serial.print("isBooleanStates:");
-//  Serial.println(load.isBooleanStates, BIN);
   Serial.print("Version:");
   Serial.println(load.myVersion);
   Serial.print("SSID:");
@@ -685,8 +674,6 @@ void loadSettingsDataFromEEPROM(){
   Serial.println((uint16_t)load.serverPort);
   Serial.print("ServerUrlPrefix:");
   Serial.println(load.serverUrlPrefix);
-//  Serial.print("Server End Point:");
-//  Serial.println(load.serverEndPoint);
   Serial.print("MQTT IP:");
   Serial.println(load.mqttIPAddress);
   Serial.print("MQTT Port:");
@@ -695,8 +682,6 @@ void loadSettingsDataFromEEPROM(){
   Serial.println(load.mqttUser);
   Serial.print("MQTT Password:");
   Serial.println(load.mqttPassword);
-//  Serial.print("Topic Name:");
-//  Serial.println(load.mqttTopic);
   Serial.print("MQTT Display Name:");
   Serial.println(load.mqttDisplayName);
   Serial.print("MQTT Discovery Prefix:");
@@ -721,8 +706,6 @@ void saveSettingsDataToEEPROM() {
   Serial.println("-----------------------");
   Serial.println("Saving WiFi Config to EEPROM.");
   Serial.println("-----------------------");
-//  Serial.print("   IS_BOOLEAN_STATES:");
-//  Serial.println(g_settings.isBooleanStates, BIN);
   Serial.print("   Version:");
   Serial.println(g_settings.myVersion);
   Serial.print("   SSID:");
@@ -737,8 +720,6 @@ void saveSettingsDataToEEPROM() {
   Serial.println((uint16_t)g_settings.serverPort);
   Serial.print("   SERVER_URL_PREFIX:");
   Serial.println(g_settings.serverUrlPrefix);
-//  Serial.print("   G_SETTINGS_SERVER_END_POINT:");
-//  Serial.println(g_settings.serverEndPoint);
   Serial.print("   MQTT_IP:");
   Serial.println(g_settings.mqttIPAddress);
   Serial.print("   MQTT_PORT:");
@@ -751,8 +732,6 @@ void saveSettingsDataToEEPROM() {
   Serial.println(g_settings.mqttDisplayName);
   Serial.print("   MQTT DISCOVERYPREFIX:");
   Serial.println(g_settings.mqttDiscoveryPrefix);
-//  Serial.print("   G_SETTINGS_TOPIC_NAME:");
-//  Serial.println(g_settings.mqttTopic);
   Serial.println("-----------------------");
   Serial.print("size:");
   Serial.println(sizeof(g_settings));
@@ -798,7 +777,6 @@ void loadStateFromEEPROM() {
  */
 char * replace(char * aInput, char aFind, char aReplaced) 
 {
-
     char * output = (char*)malloc(strlen(aInput));
 
     for (int i = 0; i < strlen(aInput); i++)
@@ -810,7 +788,6 @@ char * replace(char * aInput, char aFind, char aReplaced)
     output[strlen(aInput)] = '\0';
 
     return output;
-
 }
 
 /**
@@ -865,9 +842,6 @@ void getHeader(WiFiClient& aClient, int& aBodySize){
       Serial.print(hdr_line.length());
       Serial.print("]:");
       Serial.println(hdr_line);
-
-//      Serial.print("[0]:0x");
-//      Serial.println(hdr_line[0], HEX);
 
       char* hdr_line_elements[2];
       int hdr_line_len = hdr_line.length();
@@ -1098,7 +1072,6 @@ void handleUpdateSettings(WiFiClient& aClient){
    bool found_mqtt_password = false;
    bool found_mqtt_discovery_prefix = false;
    bool found_mqtt_display_name = false;
-//   bool found_mqtt_topic = false;
    
    JSONVar json;
    json[JSON_CONFIG_RESET_TAG] = POST_RESP_FAILURE;
@@ -1303,7 +1276,6 @@ void handleUpdateSettings(WiFiClient& aClient){
                   strcpy(g_settings.mqttDisplayName, key_value[1]);
                   found_mqtt_display_name = true;
                }
-
             }
          }
       }
@@ -1314,14 +1286,10 @@ void handleUpdateSettings(WiFiClient& aClient){
        found_server_url_prefix & found_mqtt_ip & found_mqtt_port & found_mqtt_user & 
        found_mqtt_password & found_instance_id & found_mqtt_discovery_prefix & found_mqtt_display_name ){
 
-//      g_settings.isBooleanStates = 0b00000000;
       zeroAllStates();
       saveStateToEEPROM();
       saveSettingsDataToEEPROM();
-//      Serial.print("Setting isBooleanStates:");  
-//      Serial.println(g_settings.isBooleanStates, BIN);  
-      
-//      saveSettingsData();
+
       json[JSON_CONFIG_RESET_TAG] = POST_RESP_SUCCESS;
       success = true;
    }   
@@ -1387,13 +1355,9 @@ void factory_reset(){
  ***************************************************************************/
 void discovery_reset(bool aFlag){
    Serial.println("Discovery request received");
-//    setReset(true);
 
     setMQTTDiscoverySent(aFlag);
     saveStateToEEPROM();
-
-//   Serial.print("About to restart chip");  
-//   ESP.restart();
 }
 
 /***************************************************************************
@@ -1402,13 +1366,9 @@ void discovery_reset(bool aFlag){
 void set_deep_sleep_mode(bool aFlag){
    Serial.print("Deep Sleep Mode Flag:");
    Serial.println(aFlag);
-//    setReset(true);
 
     setDeepSleepMode(aFlag);
     saveStateToEEPROM();
-
-//   Serial.print("About to restart chip");  
-//   ESP.restart();
 }
 
 /**
@@ -1445,11 +1405,8 @@ void sendMQTTDiscoveryLights(WiFiClient& wifi_client){
    json_dev[MQTT_JSON_DEV_SW_TAG] = SW_VERSION;
    
    json_packet[MQTT_JSON_NAME_TAG] = "Lights";
-//   json_packet["~"] = "esp32c3/db5";
-//   json_packet["stat_t"] = "~/state"; //Must match the mqtt topic in the data packet
    json_packet[MQTT_JSON_STAT_TOPIC_TAG] = g_mqtt_state_topic; //Must match the mqtt topic in the data packet
    json_packet[MQTT_JSON_UNIQ_ID_TAG] = g_uniq_id+"-"+MQTT_JSON_LIGHTS_TAG;
-//   json_packet["dev_cla"] = "null";
    json_packet[MQTT_JSON_ICON_TAG] = "mdi:lightbulb-group";
    json_packet[MQTT_JSON_VAL_TEMPLATE_TAG] = "{{ value_json."+MQTT_JSON_LIGHTS_TAG+" }}";
    json_packet[MQTT_JSON_FORCE_UPDATE_TAG] = true;
@@ -1475,8 +1432,6 @@ void sendMQTTDiscoveryVcc(WiFiClient& wifi_client){
    json_dev[MQTT_JSON_DEV_IDS_TAG] = g_uniq_id;
    
    json_packet[MQTT_JSON_NAME_TAG] = "Battery";
-//   json_packet["~"] = "esp32c3/db5";
-//   json_packet[MQTT_JSON_STAT_TOPIC_TAG] = "~/state"; //Must match the mqtt topic in the data packet
    json_packet[MQTT_JSON_STAT_TOPIC_TAG] = g_mqtt_state_topic; //Must match the mqtt topic in the data packet
    json_packet[MQTT_JSON_UNIQ_ID_TAG] = g_uniq_id+"-"+MQTT_JSON_VCC_TAG;
    json_packet[MQTT_JSON_DEVICE_CLASS_TAG] = "voltage";
@@ -1503,11 +1458,8 @@ void sendMQTTDiscoveryTts(WiFiClient& wifi_client){
    json_dev[MQTT_JSON_DEV_IDS_TAG] = g_uniq_id;
    
    json_packet[MQTT_JSON_NAME_TAG] = "Time To Sleep";
-//   json_packet["~"] = "esp32c3/db5";
-//   json_packet["stat_t"] = "~/state"; //Must match the mqtt topic in the data packet
    json_packet[MQTT_JSON_STAT_TOPIC_TAG] = g_mqtt_state_topic; //Must match the mqtt topic in the data packet
    json_packet[MQTT_JSON_UNIQ_ID_TAG] = g_uniq_id+"-"+MQTT_JSON_TTS_TAG;
-//   json_packet["dev_cla"] = "Voltage";
    json_packet[MQTT_JSON_ICON_TAG] = "mdi:clock-outline";
    json_packet[MQTT_JSON_MEAS_UNIT_TAG] = "ms";
    json_packet[MQTT_JSON_VAL_TEMPLATE_TAG] = "{{ value_json."+MQTT_JSON_TTS_TAG+"|default(0) }}";
@@ -1531,11 +1483,8 @@ void sendMQTTDiscoveryLsc(WiFiClient& wifi_client){
    json_dev[MQTT_JSON_DEV_IDS_TAG] = g_uniq_id;
    
    json_packet[MQTT_JSON_NAME_TAG] = "Last Connect";
-//   json_packet["~"] = "esp32c3/db5";
-//   json_packet["stat_t"] = "~/state"; //Must match the mqtt topic in the data packet
    json_packet[MQTT_JSON_STAT_TOPIC_TAG] = g_mqtt_state_topic; //Must match the mqtt topic in the data packet
    json_packet[MQTT_JSON_UNIQ_ID_TAG] = g_uniq_id+"-"+MQTT_JSON_LSC_TAG;
-//   json_packet["dev_cla"] = "null";
    json_packet[MQTT_JSON_DEV_TAG] = "connectivity";
    json_packet[MQTT_JSON_ICON_TAG] = "mdi:connection";
    json_packet[MQTT_JSON_VAL_TEMPLATE_TAG] = "{{ value_json."+MQTT_JSON_LSC_TAG+" }}";
@@ -1561,13 +1510,8 @@ void sendMQTTDiscoveryMode(WiFiClient& wifi_client){
    json_dev[MQTT_JSON_DEV_IDS_TAG] = g_uniq_id;
    
    json_packet[MQTT_JSON_NAME_TAG] = "Sleep Mode";
-//   json_packet["~"] = "esp32c3/db5";
-//   json_packet["stat_t"] = "~/state"; //Must match the mqtt topic in the data packet
    json_packet[MQTT_JSON_STAT_TOPIC_TAG] = g_mqtt_state_topic; //Must match the mqtt topic in the data packet
    json_packet[MQTT_JSON_UNIQ_ID_TAG] = g_uniq_id+"-"+MQTT_JSON_MODE_TAG;
-//   json_packet["dev_cla"] = "Voltage";
-//   json_packet[MQTT_JSON_ICON_TAG] = "mdi:clock-outline";
-//   json_packet[MQTT_JSON_MEAS_UNIT_TAG] = "ms";
    json_packet[MQTT_JSON_VAL_TEMPLATE_TAG] = "{{ value_json."+MQTT_JSON_MODE_TAG+"|default(0) }}";
    json_packet[MQTT_JSON_FORCE_UPDATE_TAG] = true;
    json_packet[MQTT_JSON_DEV_TAG] = json_dev;
@@ -1599,8 +1543,6 @@ void sendMQTTMessage(JSONVar& json_packet, String& mqtt_topic, WiFiClient& wifi_
    int mqtt_connection_attempts = (MQTT_CONNECT_TIMEOUT_S * 1000) / MQTT_CONNECT_DELAY_MS;
    int total_mqtt_connection_attempts = mqtt_connection_attempts;
 
-   //esp32c3-db5-MACADDR
-   
    Serial.printf("%s - Attempting to connect to the mqtt broker with %s/%s (%d attempts).\n", g_uniq_id.c_str(), g_settings.mqttUser, g_settings.mqttPassword, mqtt_connection_attempts);
    short old_status = MQTT_DISCONNECTED;
    Serial.print(get_readable_mqtt_connection_status(old_status));
@@ -1625,7 +1567,6 @@ void sendMQTTMessage(JSONVar& json_packet, String& mqtt_topic, WiFiClient& wifi_
    if(mqtt_client.connected()){
       Serial.printf("\nConnected after %d attempts \n", (total_mqtt_connection_attempts - mqtt_connection_attempts));
 
-//      bool pub_state = mqtt_client.publish(mqtt_topic.c_str(), JSON.stringify(json_packet).c_str());
       bool pub_state = mqtt_client.publish(mqtt_topic.c_str(), JSON.stringify(json_packet).c_str());
       /**************************************************************************************/
 
@@ -1636,7 +1577,6 @@ void sendMQTTMessage(JSONVar& json_packet, String& mqtt_topic, WiFiClient& wifi_
       }
 
       Serial.print("MQTT Topic:");
-//      Serial.println(mqtt_topic.c_str());
       Serial.println(mqtt_topic);
       Serial.print("MQTT JSON:");
       Serial.println(JSON.stringify(json_packet).c_str());
@@ -1648,6 +1588,25 @@ void sendMQTTMessage(JSONVar& json_packet, String& mqtt_topic, WiFiClient& wifi_
       Serial.printf("\nUnable to connect to MQTT after %d attempts \n", (total_mqtt_connection_attempts - mqtt_connection_attempts));    
    }
 }
+
+/***************************************************************************
+ * This prints the reason the chip woke up. Should usually be timer
+ ***************************************************************************/
+void print_wakeup_reason(){
+  esp_sleep_wakeup_cause_t wakeup_reason;
+
+  wakeup_reason = esp_sleep_get_wakeup_cause();
+
+  switch(wakeup_reason){
+    case ESP_SLEEP_WAKEUP_EXT0 : Serial.println("Wakeup caused by external signal using RTC_IO"); break;
+    case ESP_SLEEP_WAKEUP_EXT1 : Serial.println("Wakeup caused by external signal using RTC_CNTL"); break;
+    case ESP_SLEEP_WAKEUP_TIMER : Serial.println("Wakeup caused by timer"); break;
+    case ESP_SLEEP_WAKEUP_TOUCHPAD : Serial.println("Wakeup caused by touchpad"); break;
+    case ESP_SLEEP_WAKEUP_ULP : Serial.println("Wakeup caused by ULP program"); break;
+    default : Serial.printf("Wakeup was not caused by deep sleep: %d\n",wakeup_reason); break;
+  }
+}
+
 
 /*****************************************************************
  * 
@@ -1725,7 +1684,7 @@ void doServer() {
 void doClient() {
 
    float vcc = getVCC();
-   int time_to_sleep = DEFAULT_SLEEP_PERIOD_MS;
+   int time_to_sleep_ms = DEFAULT_SLEEP_PERIOD_MS;
    bool server_connection_status = false;
    int seqid = 0;
 
@@ -1735,18 +1694,8 @@ void doClient() {
    
    HTTPClient http;
    String end_point = String(g_settings.instanceId) + "/status";
-//   String end_point = "/status";
-
-//   JSONVar json_body;
-//
-//   JSON_BODY_ID = "id";
-//   json_body[JSON_BODY_ID] = g_settings.instanceId;
-   
-   
-   //char *server_end_point = g_settings.instanceId
 
    char server_url[MAX_SERVER_URL_LEN];
-//   sprintf(server_url, "http://%s:%d/%s/%s", g_settings.serverIPAddress, g_settings.serverPort, g_settings.serverUrlPrefix, end_point.c_str());
    sprintf(server_url, "http://%s:%d/%s/%s", g_settings.serverIPAddress, g_settings.serverPort, g_settings.serverUrlPrefix, end_point.c_str());
 
    Serial.printf("Sending request to %s\n", server_url);
@@ -1755,19 +1704,13 @@ void doClient() {
    int resp_code = http.GET();
    Serial.println(resp_code);
 
-//   if(resp_code != 200){
-//      ++g_failures_count;
-//   } else {
-//      g_has_been_successful_at_least_once = true;
-//      g_failures_count = 0;
-//   }
-  
    if(FORCE_RESET){
       factory_reset();
    }
 
    JSONVar json_packet;
    json_packet[MQTT_JSON_LSC_TAG] = CONN_MQTT_STATUS_N;    
+   json_packet[MQTT_JSON_VCC_TAG]  = String(vcc, 2); 
 
    if(resp_code == 200) {
       g_has_been_successful_at_least_once = true;
@@ -1810,10 +1753,10 @@ void doClient() {
          }
          
          if(null != resp_json[MQTT_JSON_TTS_TAG]){
-            time_to_sleep = atoi(resp_json[MQTT_JSON_TTS_TAG]);
+            time_to_sleep_ms = atoi(resp_json[MQTT_JSON_TTS_TAG]);
             Serial.print("Time To Sleep recevied(ms):");
-            json_packet[MQTT_JSON_TTS_TAG]  = time_to_sleep;
-            Serial.println(time_to_sleep);            
+            json_packet[MQTT_JSON_TTS_TAG]  = time_to_sleep_ms;
+            Serial.println(time_to_sleep_ms);            
          } else {
              Serial.println("No TTS instruction from Server - Not changing");          
          }
@@ -1821,9 +1764,6 @@ void doClient() {
          if(null != resp_json[JSON_RESET_TAG]){
             if(0 == strcmp(resp_json[JSON_RESET_TAG], RESET_STATUS_TRUE)){
                Serial.println("Reset recevied");
-//               reset_to_factory_settings();
-//               Serial.print("About to restart chip");  
-//               ESP.restart();
                 factory_reset();
             }
          } else {
@@ -1840,8 +1780,24 @@ void doClient() {
              Serial.println("No Discovery instruction from Server - Not changing");          
          }
 
-         if(null != resp_json[JSON_SEQID_TAG]){
-            seqid = atoi(resp_json[JSON_SEQID_TAG]);
+//         Serial.print("resp_json[UNKNOWN]=");
+//         Serial.println(resp_json["alex"]);
+//
+//         if(0 < (int)resp_json["alex"]){
+//         Serial.println(" can find resp_json[alex]");
+//          
+//         } else {
+//         Serial.println(" can't find resp_json[alex]");
+//          
+//         }
+
+
+
+//         Serial.print("resp_json[JSON_SEQID_TAG]=");
+//         Serial.println(resp_json[JSON_SEQID_TAG]);
+         if(0 < (int)resp_json[JSON_SEQID_TAG]){
+         //   seqid = atoi(resp_json[JSON_SEQID_TAG]);
+            seqid = resp_json[JSON_SEQID_TAG];
             Serial.print("Sequence ID recevied(ms):");
             Serial.println(seqid);            
          } else {
@@ -1850,7 +1806,7 @@ void doClient() {
 
          if(null != resp_json[MODE_TAG]){
             if(0 == strcmp(resp_json[MODE_TAG], MODE_DEEP)){
-               Serial.println("Deep Sleep Mode");
+               Serial.println("Deep Sleep Mode Found");
                 //factory_reset();
                 json_packet[MQTT_JSON_MODE_TAG] = MODE_DEEP;
                 set_deep_sleep_mode(true);
@@ -1877,23 +1833,24 @@ void doClient() {
       factory_reset();    
    }
 
+   if(!isMQTTDiscoverySent()){
+      Serial.println("MQTT Discovery is not sent");        
+   }
 
-//   if(lightState()){
-//      json_packet[MQTT_JSON_LIGHTS_TAG] = LIGHTS_MQTT_STATUS_ON;  
-//   } else {
-//      json_packet[MQTT_JSON_LIGHTS_TAG] = LIGHTS_MQTT_STATUS_OFF;
+//   int rem = seqid % SEND_MQTT_DISCOVERY_EVERY_ITERATIONS;
+//   Serial.print("MQTT Refresh Cycle:");            
+//   Serial.print("seqid:");            
+//   Serial.print(seqid);            
+//   Serial.print(" ITERATIONS:");            
+//   Serial.print(SEND_MQTT_DISCOVERY_EVERY_ITERATIONS);            
+//   Serial.print(" = ");            
+//   Serial.println(rem);            
+//
+//   if (0 == (seqid % SEND_MQTT_DISCOVERY_EVERY_ITERATIONS)){
+//      Serial.println("MQTT Discovery refresh is due");            
+//
 //   }
-   json_packet[MQTT_JSON_VCC_TAG]  = String(vcc, 2); 
-
-
-//   if(server_connection_status){
-//      json_packet[MQTT_JSON_LSC_TAG] = CONN_MQTT_STATUS_Y;    
-//   } else {
-//      json_packet[MQTT_JSON_LSC_TAG] = CONN_MQTT_STATUS_N;   
-//   }
-
-
-//   if (0 == (seqid % SEND_MQTT_DISCOVERY_EVERY_ITERATIONS))
+//
 
    if(!isMQTTDiscoverySent() || (0 == (seqid % SEND_MQTT_DISCOVERY_EVERY_ITERATIONS))){
       sendMQTTDiscoveryLights(wifi_client);
@@ -1901,47 +1858,35 @@ void doClient() {
       sendMQTTDiscoveryTts(wifi_client);
       sendMQTTDiscoveryLsc(wifi_client);
       sendMQTTDiscoveryMode(wifi_client);
-//      setMQTTDiscoverySent(true);
       discovery_reset(true);
    }
 
    sendMQTTMessage(json_packet, g_mqtt_state_topic, wifi_client);
 
-//   int sleep_len_ms = 60000;
-
-
    if(isDeepSleepMode()){
-      Serial.print("Deep Sleeping for(ms):");
-      Serial.println(time_to_sleep);
-      delay(time_to_sleep);    
-   } else {
-      Serial.print("Programattical Sleeping for(ms):");
-      Serial.println(time_to_sleep);
-      delay(time_to_sleep);    
-   }
 
-////   int loop_delay = 60000;
-////   int loop_delay_ms = 60000;-
-//   int loop_delay_ms = 10000;
-//   int led_duration_ms = 500;
-//   digitalWrite(BUILTIN_LED_PIN, 0);
-//   delay(led_duration_ms);
-//   digitalWrite(BUILTIN_LED_PIN, 1);
-//
-////   Serial.print("Sleeping for ");
-////   Serial.print((loop_delay - led_duration));
-////   Serial.println("ms");
-////   delay(loop_delay - led_duration);
-//
-//
-//   gpio_hold_en((gpio_num_t)BUILTIN_RX_PIN);
-//
-//
-////   long sp_duration = 10e6;
-//   long sp_duration_us = loop_delay_ms * 1000;
-//   Serial.print("Deep Sleep for ");
-//   Serial.print((sp_duration_us - (led_duration_ms * 1000)));
-//   Serial.println("us");
-//   ESP.deepSleep((sp_duration_us - (led_duration_ms * 1000))); // 20e6 is 20 microseconds
+      const int deep_sleep_delay_ms = 5000;
+      Serial.print("About to deep sleep in ");
+      Serial.print(deep_sleep_delay_ms);
+      Serial.println("ms (delay for debugging reasons)");      
+      delay(deep_sleep_delay_ms);    
+
+
+      const int MS_TO_USECONDS = 1000;
+      const int time_to_sleep_us = time_to_sleep_ms * MS_TO_USECONDS;
+      esp_sleep_enable_timer_wakeup(time_to_sleep_us);
+      
+      Serial.print("Deep Sleeping for(ms):");
+      Serial.print(time_to_sleep_ms);
+      Serial.print(" which is (us):");
+      Serial.println(time_to_sleep_us);
+
+      esp_deep_sleep_start(); 
+      //delay(time_to_sleep_ms);    
+   } else {
+      Serial.print("Programatical Sleeping for(ms):");
+      Serial.println(time_to_sleep_ms);
+      delay(time_to_sleep_ms);    
+   }
 
 }
