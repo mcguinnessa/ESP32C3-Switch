@@ -34,8 +34,12 @@ bool FORCE_RESET = false;
 * These are expected to be configurable.
 * 
 ******************************************************************************/
-const String HW_VERSION = "esp32c3";
-const String SW_VERSION = "adm-esp32pull-1.23";
+const String HW_MANUFACTURER = "xiao seeed";
+const String HW_MODEL        = "esp32c3";
+const String HW_VERSION      = HW_MODEL;
+const String SW_VERSION      = "adm-esp32pull-1.24";
+
+
 
 // define PINs according to pin diagram
 const int ON_PIN = D10;
@@ -105,16 +109,17 @@ const char* const LIGHTS_SERVER_STATUS_ON = "on";
 const char* const LIGHTS_SERVER_STATUS_OFF = "off";
 const char* const LIGHTS_MQTT_STATUS_ON = "on";
 const char* const LIGHTS_MQTT_STATUS_OFF = "off";
-const char* const CONN_MQTT_STATUS_Y = "y";
-const char* const CONN_MQTT_STATUS_N = "n";
+//const char* const CONN_MQTT_STATUS_Y = "y";
+//const char* const CONN_MQTT_STATUS_N = "n";
 const char* const JSON_RESET_TAG = "reset";
 const char* const RESET_STATUS_TRUE = "true";
 const char* const JSON_DISCOVERY_TAG = "discovery";
 const char* const DISCOVERY_STATUS_TRUE = "true";
 const char* const JSON_SEQID_TAG = "seqid";
 const char* const MODE_TAG = "mode";
-const char* const MODE_DEEP = "deep";
-const char* const MODE_PROG = "prog";
+const char* const MODE_DEEP   = "deep";
+const char* const MODE_PROG   = "prog";
+const char* const MODE_SERVER = "server";
 const String MQTT_JSON_LIGHTS_TAG = "lights";
 const String MQTT_JSON_TTS_TAG = "tts";
 const String MQTT_JSON_VCC_TAG = "vcc";
@@ -129,6 +134,8 @@ const String MQTT_JSON_DEV_NAME_TAG = "name";
 const String MQTT_JSON_DEV_IDS_TAG = "ids";
 const String MQTT_JSON_DEV_HW_TAG = "hw";
 const String MQTT_JSON_DEV_SW_TAG = "sw";
+const String MQTT_JSON_DEV_MANUFACTURER_TAG = "manufacturer";
+const String MQTT_JSON_DEV_MODEL_TAG = "model";
 const String MQTT_JSON_NAME_TAG = "name";
 const String MQTT_JSON_STAT_TOPIC_TAG = "stat_t";
 const String MQTT_JSON_UNIQ_ID_TAG = "uniq_id";
@@ -246,10 +253,10 @@ struct storeStruct_t{
 // Create an instance of the server
 WiFiServer server(AP_SERVER_PORT);
 
-const int MAX_FAILURES_ALLOWED_BEFORE_RESET = 10;
+//const int MAX_FAILURES_ALLOWED_BEFORE_RESET = 10;
 
-bool g_has_been_successful_at_least_once = false;
-int g_failures_count = 0;
+//bool g_has_been_successful_at_least_once = false;
+//int g_failures_count = 0;
 
 const short RESET_FLAG_BIT     = 0;
 const short LIGHT_FLAG_BIT     = 1;
@@ -287,6 +294,12 @@ storeStruct_t g_settings = {
 };
 
 
+#ifdef ESP8266
+int CHIP_ID = ESP.getChipId();
+#elif defined(ESP32)
+int CHIP_ID = ESP.getEfuseMac();
+#endif
+
 /**
  * Normal set up method
  */
@@ -307,6 +320,9 @@ void setup() {
     --serial_attempts;
   }
   Serial.println("Serial Started...");
+
+  Serial.print("Chip ID:");
+  Serial.println(CHIP_ID);
 
   loadSettingsDataFromEEPROM();
   loadStateFromEEPROM();  
@@ -1403,6 +1419,8 @@ void sendMQTTDiscoveryLights(WiFiClient& wifi_client){
    json_dev[MQTT_JSON_DEV_NAME_TAG] = g_settings.mqttDisplayName;
    json_dev[MQTT_JSON_DEV_HW_TAG] = HW_VERSION;
    json_dev[MQTT_JSON_DEV_SW_TAG] = SW_VERSION;
+   json_dev[MQTT_JSON_DEV_MANUFACTURER_TAG] = HW_MANUFACTURER;
+   json_dev[MQTT_JSON_DEV_MODEL_TAG] = HW_MODEL;
    
    json_packet[MQTT_JSON_NAME_TAG] = "Lights";
    json_packet[MQTT_JSON_STAT_TOPIC_TAG] = g_mqtt_state_topic; //Must match the mqtt topic in the data packet
@@ -1477,7 +1495,8 @@ void sendMQTTDiscoveryLsc(WiFiClient& wifi_client){
 
    JSONVar json_packet;
 
-   String mqtt_discovery_topic = String(g_settings.mqttDiscoveryPrefix) + "/binary_sensor/"+String(g_settings.instanceId)+"/" + DISCOVERY_TOPIC_LSC + DISCOVERY_TOPIC_SUFFIX;
+//   String mqtt_discovery_topic = String(g_settings.mqttDiscoveryPrefix) + "/binary_sensor/"+String(g_settings.instanceId)+"/" + DISCOVERY_TOPIC_LSC + DISCOVERY_TOPIC_SUFFIX;
+   String mqtt_discovery_topic = String(g_settings.mqttDiscoveryPrefix) + "/sensor/"+String(g_settings.instanceId)+"/" + DISCOVERY_TOPIC_LSC + DISCOVERY_TOPIC_SUFFIX;
 
    JSONVar json_dev;
    json_dev[MQTT_JSON_DEV_IDS_TAG] = g_uniq_id;
@@ -1490,8 +1509,8 @@ void sendMQTTDiscoveryLsc(WiFiClient& wifi_client){
    json_packet[MQTT_JSON_VAL_TEMPLATE_TAG] = "{{ value_json."+MQTT_JSON_LSC_TAG+" }}";
    json_packet[MQTT_JSON_FORCE_UPDATE_TAG] = true;
    json_packet[MQTT_JSON_DEV_TAG] = json_dev;
-   json_packet[MQTT_JSON_PL_ON_TAG] = CONN_MQTT_STATUS_Y;
-   json_packet[MQTT_JSON_PL_OFF_TAG] = CONN_MQTT_STATUS_N;
+   json_packet[MQTT_JSON_PL_ON_TAG] = 200;
+//   json_packet[MQTT_JSON_PL_OFF_TAG] = CONN_MQTT_STATUS_N;
    
    sendMQTTMessage(json_packet, mqtt_discovery_topic, wifi_client);   
   }
@@ -1686,7 +1705,8 @@ void doClient() {
    float vcc = getVCC();
    int time_to_sleep_ms = DEFAULT_SLEEP_PERIOD_MS;
    bool server_connection_status = false;
-   int seqid = 0;
+   unsigned int seqid = 0;
+   bool reset = false;
 
    WiFiClient wifi_client;  // or WiFiClientSecure for HTTPS
 
@@ -1709,15 +1729,16 @@ void doClient() {
    }
 
    JSONVar json_packet;
-   json_packet[MQTT_JSON_LSC_TAG] = CONN_MQTT_STATUS_N;    
+//   json_packet[MQTT_JSON_LSC_TAG] = CONN_MQTT_STATUS_N;    
+   json_packet[MQTT_JSON_LSC_TAG] = 0;    
    json_packet[MQTT_JSON_VCC_TAG]  = String(vcc, 2); 
 
    if(resp_code == 200) {
-      g_has_been_successful_at_least_once = true;
-      g_failures_count = 0;
+//      g_has_been_successful_at_least_once = true;
+//      g_failures_count = 0;
       server_connection_status = true;
       // Print the response
-      json_packet[MQTT_JSON_LSC_TAG] = CONN_MQTT_STATUS_Y;    
+      json_packet[MQTT_JSON_LSC_TAG] = resp_code;    
 
       String http_response = http.getString();
       Serial.print("Response:");
@@ -1764,7 +1785,8 @@ void doClient() {
          if(null != resp_json[JSON_RESET_TAG]){
             if(0 == strcmp(resp_json[JSON_RESET_TAG], RESET_STATUS_TRUE)){
                Serial.println("Reset recevied");
-                factory_reset();
+                json_packet[MQTT_JSON_MODE_TAG] = MODE_SERVER;
+                reset = true;
             }
          } else {
              Serial.println("No Reset instruction from Server - Not changing");          
@@ -1773,25 +1795,11 @@ void doClient() {
          if(null != resp_json[JSON_DISCOVERY_TAG]){
             if(0 == strcmp(resp_json[JSON_DISCOVERY_TAG], DISCOVERY_STATUS_TRUE)){
                Serial.println("Discovery Request recevied");
-                //factory_reset();
                 discovery_reset(false);
             }
          } else {
              Serial.println("No Discovery instruction from Server - Not changing");          
          }
-
-//         Serial.print("resp_json[UNKNOWN]=");
-//         Serial.println(resp_json["alex"]);
-//
-//         if(0 < (int)resp_json["alex"]){
-//         Serial.println(" can find resp_json[alex]");
-//          
-//         } else {
-//         Serial.println(" can't find resp_json[alex]");
-//          
-//         }
-
-
 
 //         Serial.print("resp_json[JSON_SEQID_TAG]=");
 //         Serial.println(resp_json[JSON_SEQID_TAG]);
@@ -1807,7 +1815,6 @@ void doClient() {
          if(null != resp_json[MODE_TAG]){
             if(0 == strcmp(resp_json[MODE_TAG], MODE_DEEP)){
                Serial.println("Deep Sleep Mode Found");
-                //factory_reset();
                 json_packet[MQTT_JSON_MODE_TAG] = MODE_DEEP;
                 set_deep_sleep_mode(true);
             } else { //Anything else
@@ -1821,36 +1828,18 @@ void doClient() {
       }
     
    }else {
-      ++g_failures_count;
-      Serial.printf("Failed %d/%d before reset \n", g_failures_count, MAX_FAILURES_ALLOWED_BEFORE_RESET);
+//      ++g_failures_count;
+//      Serial.printf("Failed %d/%d before reset \n", g_failures_count, MAX_FAILURES_ALLOWED_BEFORE_RESET);
       Serial.print("Error Connecting, return code=");    
-      Serial.println(resp_code);
-      
+      Serial.println(resp_code);      
    }
    http.end();
 
-   if((g_failures_count > MAX_FAILURES_ALLOWED_BEFORE_RESET) && (!g_has_been_successful_at_least_once)){
-      factory_reset();    
-   }
 
-   if(!isMQTTDiscoverySent()){
-      Serial.println("MQTT Discovery is not sent");        
-   }
-
-//   int rem = seqid % SEND_MQTT_DISCOVERY_EVERY_ITERATIONS;
-//   Serial.print("MQTT Refresh Cycle:");            
-//   Serial.print("seqid:");            
-//   Serial.print(seqid);            
-//   Serial.print(" ITERATIONS:");            
-//   Serial.print(SEND_MQTT_DISCOVERY_EVERY_ITERATIONS);            
-//   Serial.print(" = ");            
-//   Serial.println(rem);            
-//
-//   if (0 == (seqid % SEND_MQTT_DISCOVERY_EVERY_ITERATIONS)){
-//      Serial.println("MQTT Discovery refresh is due");            
-//
+//   if(!isMQTTDiscoverySent()){
+//      Serial.println("MQTT Discovery is not sent");        
 //   }
-//
+
 
    if(!isMQTTDiscoverySent() || (0 == (seqid % SEND_MQTT_DISCOVERY_EVERY_ITERATIONS))){
       sendMQTTDiscoveryLights(wifi_client);
@@ -1863,30 +1852,48 @@ void doClient() {
 
    sendMQTTMessage(json_packet, g_mqtt_state_topic, wifi_client);
 
-   if(isDeepSleepMode()){
 
-      const int deep_sleep_delay_ms = 5000;
-      Serial.print("About to deep sleep in ");
-      Serial.print(deep_sleep_delay_ms);
-      Serial.println("ms (delay for debugging reasons)");      
-      delay(deep_sleep_delay_ms);    
+//   if(((g_failures_count > MAX_FAILURES_ALLOWED_BEFORE_RESET) && (!g_has_been_successful_at_least_once)) || (true == reset)){
+   if(true == reset){
+      factory_reset();    
+   }
 
 
-      const int MS_TO_USECONDS = 1000;
-      const int time_to_sleep_us = time_to_sleep_ms * MS_TO_USECONDS;
-      esp_sleep_enable_timer_wakeup(time_to_sleep_us);
-      
-      Serial.print("Deep Sleeping for(ms):");
-      Serial.print(time_to_sleep_ms);
-      Serial.print(" which is (us):");
-      Serial.println(time_to_sleep_us);
 
-      esp_deep_sleep_start(); 
-      //delay(time_to_sleep_ms);    
+
+   if(resp_code == 200){
+     if(isDeepSleepMode()){
+    
+        const int deep_sleep_delay_ms = 5000;
+        Serial.print("About to deep sleep in ");
+        Serial.print(deep_sleep_delay_ms);
+        Serial.println("ms (delay for debugging reasons)");      
+        delay(deep_sleep_delay_ms);    
+    
+    
+        const int MS_TO_USECONDS = 1000;
+        const int time_to_sleep_us = time_to_sleep_ms * MS_TO_USECONDS;
+        esp_sleep_enable_timer_wakeup(time_to_sleep_us);
+        
+        Serial.print("Deep Sleeping for(ms):");
+        Serial.print(time_to_sleep_ms);
+        Serial.print(" which is (us):");
+        Serial.println(time_to_sleep_us);
+    
+        esp_deep_sleep_start(); 
+        //delay(time_to_sleep_ms);    
+     } else {
+        Serial.print("Programatical Sleeping for(ms):");
+        Serial.println(time_to_sleep_ms);
+        delay(time_to_sleep_ms);    
+     }
    } else {
-      Serial.print("Programatical Sleeping for(ms):");
-      Serial.println(time_to_sleep_ms);
-      delay(time_to_sleep_ms);    
+        long retry_sleep = 60000;
+        Serial.print("Sleeping for(ms):");
+        Serial.print(retry_sleep);
+        Serial.println(" and will retry");
+        delay(retry_sleep);    
+    
    }
 
 }
