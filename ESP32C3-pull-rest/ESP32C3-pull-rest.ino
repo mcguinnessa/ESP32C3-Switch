@@ -37,9 +37,7 @@ bool FORCE_RESET = false;
 const String HW_MANUFACTURER = "xiao seeed";
 const String HW_MODEL        = "esp32c3";
 const String HW_VERSION      = HW_MODEL;
-const String SW_VERSION      = "adm-esp32pull-1.24";
-
-
+const String SW_VERSION      = "adm-esp32pull-1.25";
 
 // define PINs according to pin diagram
 const int ON_PIN = D10;
@@ -129,6 +127,7 @@ const char* const JSON_CONFIG_RESET_TAG = "reset-config";
 const char* const JSON_ERROR_TAG = "error";
 const char* const POST_RESP_FAILURE = "Failure";
 const char* const POST_RESP_SUCCESS = "Success";
+const int MAX_TTS_SLEEP_PERIOD_MS = 60 * 60 * 1000;
 
 const String MQTT_JSON_DEV_NAME_TAG = "name";
 const String MQTT_JSON_DEV_IDS_TAG = "ids";
@@ -1776,8 +1775,16 @@ void doClient() {
          if(null != resp_json[MQTT_JSON_TTS_TAG]){
             time_to_sleep_ms = atoi(resp_json[MQTT_JSON_TTS_TAG]);
             Serial.print("Time To Sleep recevied(ms):");
+
+            if(time_to_sleep_ms > MAX_TTS_SLEEP_PERIOD_MS){
+              Serial.print("TTS is largers than max allowed:");
+              Serial.println(MAX_TTS_SLEEP_PERIOD_MS);
+              time_to_sleep_ms = MAX_TTS_SLEEP_PERIOD_MS;
+            }
+            Serial.print("Time To Sleep value (ms):");            
             json_packet[MQTT_JSON_TTS_TAG]  = time_to_sleep_ms;
             Serial.println(time_to_sleep_ms);            
+            
          } else {
              Serial.println("No TTS instruction from Server - Not changing");          
          }
@@ -1857,8 +1864,6 @@ void doClient() {
    if(true == reset){
       factory_reset();    
    }
-
-
 
 
    if(resp_code == 200){
