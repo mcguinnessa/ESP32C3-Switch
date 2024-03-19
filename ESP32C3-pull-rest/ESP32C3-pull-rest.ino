@@ -128,6 +128,8 @@ const char* const JSON_ERROR_TAG = "error";
 const char* const POST_RESP_FAILURE = "Failure";
 const char* const POST_RESP_SUCCESS = "Success";
 const int MAX_TTS_SLEEP_PERIOD_MS = 60 * 60 * 1000;
+const int MIN_TTS_SLEEP_PERIOD_MS = 60 * 1000;
+
 
 const String MQTT_JSON_DEV_NAME_TAG = "name";
 const String MQTT_JSON_DEV_IDS_TAG = "ids";
@@ -226,7 +228,6 @@ const int TIME_TO_WAIT_FOR_SERIAL_MS = 2000;
 const int DELAY_WAIT_FOR_SERIAL_MS = 100;
 
 //Sleep period
-const int DEFAULT_SLEEP_PERIOD_MS = 10 * 1000;
 
 
 //Definition of structure to be stored in memory
@@ -1702,7 +1703,7 @@ void doServer() {
 void doClient() {
 
    float vcc = getVCC();
-   int time_to_sleep_ms = DEFAULT_SLEEP_PERIOD_MS;
+   int time_to_sleep_ms = MIN_TTS_SLEEP_PERIOD_MS;
    bool server_connection_status = false;
    unsigned int seqid = 0;
    bool reset = false;
@@ -1777,10 +1778,15 @@ void doClient() {
             Serial.print("Time To Sleep recevied(ms):");
 
             if(time_to_sleep_ms > MAX_TTS_SLEEP_PERIOD_MS){
-              Serial.print("TTS is largers than max allowed:");
+              Serial.print("TTS is larger than max allowed:");
               Serial.println(MAX_TTS_SLEEP_PERIOD_MS);
               time_to_sleep_ms = MAX_TTS_SLEEP_PERIOD_MS;
+            } else if (time_to_sleep_ms < MIN_TTS_SLEEP_PERIOD_MS){
+              Serial.print("TTS is smaller than min allowed:");
+              Serial.println(MIN_TTS_SLEEP_PERIOD_MS);              
+              time_to_sleep_ms = MIN_TTS_SLEEP_PERIOD_MS;
             }
+            
             Serial.print("Time To Sleep value (ms):");            
             json_packet[MQTT_JSON_TTS_TAG]  = time_to_sleep_ms;
             Serial.println(time_to_sleep_ms);            
