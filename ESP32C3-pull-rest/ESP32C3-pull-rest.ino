@@ -39,10 +39,17 @@ const String HW_MODEL        = "esp32c3";
 const String HW_VERSION      = HW_MODEL;
 const String SW_VERSION      = "adm-esp32pull-1.27";
 
-// define PINs according to pin diagram
-const int ON_PIN = D10;
-const int OFF_PIN = D1;
-const int VCC_PIN = A0;
+/**************************************************************
+ * PIN DEFINITIONS
+ **************************************************************/
+const int ON_SWITCH_PIN    = D10;
+const int OFF_SWITCH_PIN   = D1;
+const int POW_VCC_PIN      = A0;
+const int SPI_SCK_PIN      = A0;
+const int SPI_SDI_PIN      = A0;
+const int SPI_CS_PIN       = A0;
+const int LED_VCC_PIN      = A0;
+/**************************************************************/
 
 const uint16_t MIN_SERVER_PORT         = 80;
 const uint16_t MIN_MQTT_PORT           = 1023;
@@ -56,9 +63,9 @@ const int WIFI_SERVER_TIME_WHEN_CLIENT_FAILED_MS = 30000;
 const uint16_t MQTT_CONNECT_TIMEOUT_S = 5;
 const uint16_t MQTT_CONNECT_DELAY_MS = 100;
 
-/*****************************************************************************/
-
-//EEPROM Details for non-volatile config
+/*****************************************************************************
+ * Config Parameters that might require tweaking
+ *****************************************************************************/
 const int EEPROM_SIZE                = 512;
 const int STATE_DATA_START_ADDR      = 0;
 const int CONFIG_DATA_START_ADDR     = 32;
@@ -72,9 +79,7 @@ const int MAX_MQTT_PASSWORD_LENGTH   = 32;
 const int MAX_INSTANCE_ID_LENGTH     = 32;
 const int MAX_MQTT_DISPLAY_NAME_LENGTH   = 32;
 const int MAX_MQTT_DISC_PREFIX_LENGTH    = 32;
-
 const int SEND_MQTT_DISCOVERY_EVERY_ITERATIONS = 10;
-
 
 const int AP_SERVER_PORT = 80;
 const int CONNECT_TIMEOUT_MS  = 30000;  //How long it should take to connect
@@ -88,7 +93,9 @@ const char* const ADMIN_COMMAND     ="admin";
 const char* const LIGHTS_STATUS     ="status";
 const char* const SETTINGS          ="settings";
 
-/* Config Parameters */
+/*******************************************************************
+ * Config Parameters 
+ *******************************************************************/
 const char* const WIFI_SSID             ="ssid";
 const char* const WIFI_PASSWORD         ="wifi-password";
 const char* const SERVER_IP             = "server-ip"; 
@@ -116,19 +123,28 @@ const char* const MODE_TAG = "mode";
 const char* const MODE_DEEP   = "deep";
 const char* const MODE_PROG   = "prog";
 const char* const MODE_SERVER = "server";
-const String MQTT_JSON_LIGHTS_TAG = "lights";
-const String MQTT_JSON_TTS_TAG = "tts";
-const String MQTT_JSON_VCC_TAG = "vcc";
-const String MQTT_JSON_LSC_TAG = "lsc";
-const String MQTT_JSON_MODE_TAG = "md";
+const char* const TARGET_VOLTAGE_TAG = "tvoltage";
 const char* const JSON_CONFIG_RESET_TAG = "reset-config";
 const char* const JSON_ERROR_TAG = "error";
 const char* const POST_RESP_FAILURE = "Failure";
 const char* const POST_RESP_SUCCESS = "Success";
 const int MAX_TTS_SLEEP_PERIOD_MS = 60 * 60 * 1000;
 const int MIN_TTS_SLEEP_PERIOD_MS = 60 * 1000;
+const int MAX_TARGET_VOLTAGE = 12;
+const int MIN_TARGET_VOLTAGE = 0;
 
+/*****************************************************************************
+ * MQTT Constants
+ *****************************************************************************/
+//Tags for JSON parameters
+const String MQTT_JSON_TARGET_VOLTAGE_TAG = "tvolt";
+const String MQTT_JSON_LIGHTS_TAG = "lights";
+const String MQTT_JSON_TTS_TAG = "tts";
+const String MQTT_JSON_VCC_TAG = "vcc";
+const String MQTT_JSON_LSC_TAG = "lsc";
+const String MQTT_JSON_MODE_TAG = "md";
 
+//Tags for Discovery Messages
 const String MQTT_JSON_DEV_NAME_TAG = "name";
 const String MQTT_JSON_DEV_IDS_TAG = "ids";
 const String MQTT_JSON_DEV_HW_TAG = "hw";
@@ -147,8 +163,18 @@ const String MQTT_JSON_FORCE_UPDATE_TAG = "frc_upd";
 const String MQTT_JSON_PL_ON_TAG = "pl_on";
 const String MQTT_JSON_PL_OFF_TAG = "pl_off";
 
+const char* const DISCOVERY_TOPIC_SUFFIX= "/config";
+const char* const MQTT_TOPIC_SUFFIX = "/state";
+const String DISCOVERY_TOPIC_TTS = "tts"; 
+const String DISCOVERY_TOPIC_VCC = "vcc"; 
+const String DISCOVERY_TOPIC_LIGHTS = "lights"; 
+const String DISCOVERY_TOPIC_LSC = "lsc";
+const String DISCOVERY_TOPIC_MODE = "mode";
+const String DISCOVERY_TOPIC_TARGET_VOLTAGE = "tvolt";
 
-//HTTP
+/*****************************************************************************
+ * HTTP Server definition
+ *****************************************************************************/
 const int WIFI_WEB_PAGE_SIZE = 3778;
 const int JSON_RESPONSE_SIZE = 384;
 const int MAX_SERVER_URL_LEN = 48;
@@ -180,9 +206,9 @@ const char* const SET_CONFIG_URL = "/admin/settings";
 const char* const SET_CONFIG_COMMAND = "/settings";
 
 
-/**
+/*****************************************************************
  * Set default values for factory reset
- */
+ *****************************************************************/
 const char* const FR_CFG_VERSION        = "007";
 const char* const FR_WIFI_SSID          = "wifi-ssid";
 const char* const FR_WIFI_PASS          = "wifipassword";
@@ -198,13 +224,8 @@ const char* const FR_DISCOVERY_PREFIX   = "homeassistant";
 const char* const FR_DISPLAY_NAME       = "Display Name"; 
 
 
-const char* const DISCOVERY_TOPIC_SUFFIX= "/config";
-const char* const MQTT_TOPIC_SUFFIX = "/state";
-const String DISCOVERY_TOPIC_TTS = "tts"; 
-const String DISCOVERY_TOPIC_VCC = "vcc"; 
-const String DISCOVERY_TOPIC_LIGHTS = "lights"; 
-const String DISCOVERY_TOPIC_LSC = "lsc";
-const String DISCOVERY_TOPIC_MODE = "mode";
+
+
 
 /**
  * Define AP WIFI Details
@@ -224,8 +245,6 @@ const short FAILED_CLIENT_MODE = 3;
 //These are for the wait for serial
 const int TIME_TO_WAIT_FOR_SERIAL_MS = 2000;
 const int DELAY_WAIT_FOR_SERIAL_MS = 100;
-
-//Sleep period
 
 
 //Definition of structure to be stored in memory
@@ -295,10 +314,10 @@ int CHIP_ID = ESP.getEfuseMac();
 void setup() {
   Serial.begin(115200);
   // initialize digital pin led as an output
-  pinMode(ON_PIN, OUTPUT);
-  pinMode(OFF_PIN, OUTPUT);
+  pinMode(ON_SWITCH_PIN, OUTPUT);
+  pinMode(OFF_SWITCH_PIN, OUTPUT);
 
-  pinMode(VCC_PIN, INPUT);  
+  pinMode(POW_VCC_PIN, INPUT);  
 
 
   //If I wait forever, it will never start on battery, but I want intial messages on startup when debugging
@@ -386,16 +405,16 @@ void setLights(bool aState){
    }
      
   Serial.print("PIN:");
-  Serial.print(ON_PIN, HEX);
+  Serial.print(ON_SWITCH_PIN, HEX);
   Serial.print(":");
   Serial.println(p1state);
   Serial.print("PIN:");
-  Serial.print(OFF_PIN, HEX);
+  Serial.print(OFF_SWITCH_PIN, HEX);
   Serial.print(":");
   Serial.println(p2state);
 
-  digitalWrite(ON_PIN, p1state);
-  digitalWrite(OFF_PIN, p2state);
+  digitalWrite(ON_SWITCH_PIN, p1state);
+  digitalWrite(OFF_SWITCH_PIN, p2state);
 
   saveStateToEEPROM();     
 }
@@ -1410,7 +1429,7 @@ float getVCC(){
   uint32_t vbattery = 0;
 
   for(int i = 0; i < 16; i++){
-     vbattery = vbattery + analogReadMilliVolts(VCC_PIN); //ACV with correction     
+     vbattery = vbattery + analogReadMilliVolts(POW_VCC_PIN); //ACV with correction     
   }
   float vbattery_f = 2 * vbattery / 16 / 1000.0; // Attenuation ratio 1/2 and mV to V
   Serial.print("Battery(V):");
@@ -1551,6 +1570,29 @@ void sendMQTTDiscoveryMode(WiFiClient& wifi_client){
    sendMQTTMessage(json_packet, mqtt_discovery_topic, wifi_client);
 }
 
+
+/***************************************************************************
+ * Sends the discovery Message for target voltage
+ ***************************************************************************/
+void sendMQTTDiscoveryTargetVoltage(WiFiClient& wifi_client){
+   Serial.println("Sending Target Voltage Discovery Message");
+
+   JSONVar json_packet;
+
+   String mqtt_discovery_topic = String(g_settings.mqttDiscoveryPrefix) + "/sensor/"+String(g_settings.instanceId)+"/"+DISCOVERY_TOPIC_TARGET_VOLTAGE+DISCOVERY_TOPIC_SUFFIX;
+
+   JSONVar json_dev;
+   json_dev[MQTT_JSON_DEV_IDS_TAG] = g_uniq_id;
+   
+   json_packet[MQTT_JSON_NAME_TAG] = "Target Voltage";
+   json_packet[MQTT_JSON_STAT_TOPIC_TAG] = g_mqtt_state_topic; //Must match the mqtt topic in the data packet
+   json_packet[MQTT_JSON_UNIQ_ID_TAG] = g_uniq_id+"-"+MQTT_JSON_TARGET_VOLTAGE_TAG;
+   json_packet[MQTT_JSON_VAL_TEMPLATE_TAG] = "{{ value_json."+MQTT_JSON_TARGET_VOLTAGE_TAG+"|default(0) }}";
+   json_packet[MQTT_JSON_FORCE_UPDATE_TAG] = true;
+   json_packet[MQTT_JSON_DEV_TAG] = json_dev;
+   
+   sendMQTTMessage(json_packet, mqtt_discovery_topic, wifi_client);
+}
 
 
 /***************************************************************************
@@ -1784,6 +1826,7 @@ void doClient() {
 
    float vcc = getVCC();
    int time_to_sleep_ms = MIN_TTS_SLEEP_PERIOD_MS;
+   float target_voltage = MIN_TARGET_VOLTAGE;
    bool server_connection_status = false;
    unsigned int seqid = 0;
    bool reset = false;
@@ -1914,6 +1957,54 @@ void doClient() {
              Serial.println("No Mode instruction from Server - Setting to programattical sleep");          
              set_deep_sleep_mode(false);              
          }
+//         Serial.println("ALEX HERE");          
+             
+         if(null != resp_json[TARGET_VOLTAGE_TAG]){
+//            Serial.println("ALEX FOUND VOLTAGE TAG");          
+            Serial.print(resp_json[TARGET_VOLTAGE_TAG]);
+            target_voltage = atof(resp_json[TARGET_VOLTAGE_TAG]);
+            Serial.print("Target Voltage recevied(ms):");            
+            Serial.println(target_voltage);            
+            json_packet[MQTT_JSON_TARGET_VOLTAGE_TAG] = target_voltage;
+
+            
+         } else {
+             Serial.println("No Target Voltage instruction from Server - Not changing");
+         }
+
+         if(target_voltage > MAX_TARGET_VOLTAGE){
+            Serial.print("Target Voltage is larger than max allowed:");
+            Serial.println(MAX_TARGET_VOLTAGE);
+            target_voltage = MAX_TARGET_VOLTAGE;
+         } else if (target_voltage < MIN_TARGET_VOLTAGE){
+            Serial.print("Target Voltage is smaller than min allowed:");
+            Serial.println(MIN_TARGET_VOLTAGE);              
+            target_voltage = MIN_TARGET_VOLTAGE;
+         }
+         json_packet[MQTT_JSON_TARGET_VOLTAGE_TAG]  = String(target_voltage, 2);
+         Serial.print("Target Voltage:");            
+         Serial.println(target_voltage);            
+
+
+
+//         if(null != resp_json[TARGET_VOLTAGE_TAG]){
+//            time_to_sleep_ms = atoi(resp_json[MQTT_JSON_TTS_TAG]);
+//
+//          
+//            if(0 == strcmp(resp_json[TARGET_VOLTAGE_TAG], MODE_DEEP)){
+//               Serial.println("Deep Sleep Mode Found");
+//                json_packet[MQTT_JSON_TARGET_VOLTAGE_TAG] = MODE_DEEP;
+//                set_deep_sleep_mode(true);
+//            } else { //Anything else
+//                json_packet[MQTT_JSON_MODE_TAG] = MODE_PROG;
+//                set_deep_sleep_mode(false);              
+//            }
+//         } else {
+//             Serial.println("No Mode instruction from Server - Setting to programattical sleep");          
+//             set_deep_sleep_mode(false);              
+//         }
+//
+         
       }
     
    }else {
@@ -1928,6 +2019,7 @@ void doClient() {
       sendMQTTDiscoveryTts(wifi_client);
       sendMQTTDiscoveryLsc(wifi_client);
       sendMQTTDiscoveryMode(wifi_client);
+      sendMQTTDiscoveryTargetVoltage(wifi_client);
       discovery_reset(true);
    }
 
